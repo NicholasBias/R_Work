@@ -1,0 +1,454 @@
+---
+title: "Midterm_Takehome"
+author: "Nick Bias"
+date: "10/27/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message = FALSE, warning = FALSE}
+options(scipen=999)
+library(tidyverse)
+library('stringr')
+```
+# Preliminary Data Analysis
+
+```{r}
+parks <- read.csv("national_park_trails.csv")
+summary(parks)
+```
+
+On closer inspection of the data, we can see that the only Null values are located in the visitor_usage variable. I would drop these rows, but the variable description for this just says "(Honestly, I’m not sure what this one is.)", so I decided to remove the column all together. 
+
+```{r}
+parks <- parks[ , -which(names(parks) %in% c("visitor_usage"))]
+```
+
+```{r}
+park <- parks %>% 
+  mutate(
+    name = factor(name),
+    area_name = factor(area_name),
+    city_name = factor(city_name),
+    state_name = factor(state_name),
+    country_name = factor(country_name),
+    avg_rating = factor(avg_rating)
+  )
+```
+
+```{r}
+levels(park$area_name)
+```
+There are 60 National Parks in this dataset. According to the National Parks Foundation "The National Park System encompasses 423 national park sites in the United States" (https://www.nationalparks.org/connect/blog/how-many-national-parks-are-there). This means that this dataset only represents about 14.2% of all National Parks in the US. 
+
+```{r}
+levels(park$state_name)
+```
+Only 30 out of 50 states are covered by this dataset. However, the 12th item here says "Maui". Maui is an island in the Central Pacific, part of the Hawaiian archipelago. This should just say "Hawaii" for state, meaning that there are only 29 states covered in this data.  
+
+```{r}
+levels(park$country_name)
+```
+The country name for all these national parks should be United States. Hawaii is a state and should not be in the country_name field. 
+ 
+```{r}
+park %>%
+  filter(country_name == "Hawaii")
+```
+Here we can see that there are 49 rows that are incorrectly stated as "Hawaii" being the country and 14 rows incorrectly stating "Maui" as the state. These will need to be changed to accurately analyze data. 
+
+# Data Cleaning 
+
+```{r}
+parks$country_name <- str_replace_all(parks$country_name, pattern = "Hawaii", replacement ="United States")
+parks$state_name <- str_replace_all(parks$state_name, pattern = "Maui", replacement ="Hawaii")
+parks$units <- str_replace_all(parks$units, pattern = "i", replacement = "m") # changing all units to meters
+```
+
+```{r}
+parks <- parks %>% 
+  mutate(
+    name = factor(name),
+    area_name = factor(area_name),
+    city_name = factor(city_name),
+    state_name = factor(state_name),
+    country_name = factor(country_name)
+  )
+```
+
+```{r}
+levels(parks$country_name)
+```
+```{r}
+levels(parks$state_name)
+```
+We can now see that Hawaii is no longer a country level and Maui is no longer a state level. 
+
+# What features make a park or trail well-liked by hikers?
+
+```{r}
+levels(park$avg_rating)
+```
+- For this scale I will be:
+  - 0 = terrible
+  - 1 = very dissatisfied
+  - 1.5 = dissatisfied
+  - 2 =  did not like
+  - 2.5 = Not OK
+  - 3 = OK
+  - 3.5 = better than Ok
+  - 4 = Liked 
+  - 4.5 = Liked a lot
+  - 5 = Enjoyed 
+
+For "well liked" trails I will be considering scores of 4 or higher. 
+
+On closer inspection of the features and activities variables, I noticed that each row has multiple string values. I decided to split the strings up into lists that might make it easier to analyze.
+```{r}
+parks$features <- str_replace_all(parks$features, "'", "")
+parks$features <- str_replace_all(parks$features, "\\[", "")
+parks$features <- str_replace_all(parks$features, "\\]", "")
+parks$features <- str_replace_all(parks$features, " ", "")
+parks$features <- str_split(parks$features, ",")
+```
+
+```{r}
+Reduce(union, parks$features) 
+#https://stackoverflow.com/questions/5516070/multiple-unions
+```
+Here we can see all the different features that people associated with the trails. We can now make dummy variables for all the activities to analyze
+
+```{r, message = FALSE, warning = FALSE}
+parks$dog_no <- ifelse(str_detect(parks$features, "dogs-no"), 1, NA)
+parks$forest <- ifelse(str_detect(parks$features, "forest"), 1, NA)
+parks$river <- ifelse(str_detect(parks$features, "river"), 1, NA)
+parks$view <- ifelse(str_detect(parks$features, "view"), 1, NA)
+parks$waterfall <- ifelse(str_detect(parks$features, "waterfall"), 1, NA)
+parks$wild_flowers <- ifelse(str_detect(parks$features, "wild-flowers"), 1, NA)
+parks$partially_paved <- ifelse(str_detect(parks$features, "partially-paved"), 1, NA)
+parks$lake <- ifelse(str_detect(parks$features, "lake"), 1, NA)
+parks$kids <- ifelse(str_detect(parks$features, "kids"), 1, NA)
+parks$historic_site <- ifelse(str_detect(parks$features, "historic-site"), 1, NA)
+parks$dogs_leash <- ifelse(str_detect(parks$features, "dogs-leash"), 1, NA)
+parks$ada <- ifelse(str_detect(parks$features, "ada"), 1, NA)
+parks$beach <- ifelse(str_detect(parks$features, "beach"), 1, NA)
+parks$cave <- ifelse(str_detect(parks$features, "cave"), 1, NA)
+parks$paved <- ifelse(str_detect(parks$features, "paved"), 1, NA)
+parks$strollers <- ifelse(str_detect(parks$features, "strollers"), 1, NA)
+parks$hot_springs <- ifelse(str_detect(parks$features, "hot-springs"), 1, NA)
+parks$city_walk <- ifelse(str_detect(parks$features, "city-walk"), 1, NA)
+parks$rails_trails_feat <- ifelse(str_detect(parks$features, "rails-trails"), 1, NA)
+parks$dogs <- ifelse(str_detect(parks$features, "dogs"), 1, NA)
+```
+
+```{r}
+parks_feat <- parks %>% 
+  pivot_longer(dog_no:dogs,
+               names_to = "Features", 
+               values_to = "Yes")
+```
+
+```{r}
+parks_feat <- na.omit(parks_feat)
+parks_feat <- parks_feat %>% 
+  mutate(
+    Features = factor(Features)
+  )
+```
+
+```{r}
+parks_feat %>% 
+  group_by(Features) %>% 
+  summarise(sum = sum(avg_rating))%>%
+  arrange(desc(sum))
+```
+```{r}
+parks_feat %>% 
+  ggplot(aes(x=Features, y=popularity, fill=Features))+
+  geom_col() + 
+  theme(legend.position = "none") +
+  ggtitle("National Park Trail Features by Total Popularity") +
+  ylab("Sum of Popularity Rating") +
+  theme(axis.text.x = element_text(angle = 90)) 
+```
+```{r}
+parks_feat %>% 
+  ggplot(aes(x=Features, y=avg_rating, fill=Features))+
+  geom_col() + 
+  theme(legend.position = "none") +
+  ggtitle("National Park Trail Features by Total Rating") +
+  ylab("Sum of Average Rating") +
+  theme(axis.text.x = element_text(angle = 90)) 
+```
+
+These two charts are interesting as they have the same relative shape, even though they are dealing with different rating types. This might show that the most common trail features are Trails with Views and Dogs off leash (Assuming that the "dogs" feature means dogs off leash, as there is a "dog_no" and a "dogs_leash"). The third most common feature is No Dogs, then followed by Wild Flowers and Forest. 
+
+## Features by Average Trail Rating
+
+```{r}
+summary(parks$avg_rating)
+```
+The avg-rating variable is the average visitor rating of the trail from 1 to 5 stars. Here we can see that the mean Average Trail rating is 4.173 stars out of a 5 star scale. This means that a majority of people are rating the trails very highly. We can also see that the first quartile is 4 stars and the 3rd quartile is 4.5 stars. This confirms that most trails are being rated very high.
+
+```{r}
+parks_feat %>% 
+  group_by(Features) %>% 
+  summarise(AvgRating_Feat = mean(avg_rating))%>%
+  arrange(desc(AvgRating_Feat))
+```
+```{r}
+parks_feat %>% 
+  group_by(Features) %>% 
+  summarise(AvgRating_Feat = mean(avg_rating)) %>%
+  ggplot(aes(x=Features, y=AvgRating_Feat, fill=Features))+
+  geom_col() +
+  coord_cartesian(ylim = c(4, 4.5))+ #https://stackoverflow.com/questions/21734557/r-ggplot-ylim-doesnt-work
+  theme(legend.position = "none") +
+  ggtitle("National Park Trail Features Rating") +
+  theme(axis.text.x = element_text(angle = 90))  +
+  ylab("Average Rating") 
+```
+
+When examining the Average Trail Rating associated with each Feature, we can see that Trails with Rails is the most highly rated feature. Waterfalls is the next highest rated feature, followed by Beach. In fourth place is Cave, and fifth place is River. 
+Surprisingly many of the top rated features have to do with water. Out of the 20 different features, there are 5 water related ones. These 5 water features all appeared in the Top 10 Features with the Highest Average Trail Rating. This shows that the **Well-Liked Trails** often have to do with **Water related Features**. 
+
+Trails with Rails being the Top rated Feature makes sense with these other water related features being rated so high. Trails around water tend to be very slippery, and the best way to prevent people from falling on slippery trails is have rails for hikers to hold on too. This may be due to **Rails being correlation with Water Related Features**. 
+
+
+
+```{r}
+parks_feat %>% 
+  ggplot(aes(x=Features, y=avg_rating, fill=Features))+
+  geom_boxplot() + 
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 90)) +
+  ggtitle("Spread of Ratings for each Feature") +
+  ylab("Average Rating") 
+```
+
+Here we can see the spread of the Review Ratings for each feature. Many of the outliers for each feature is rated below 3.5 stars. This confirms from above that the majority of reviews were highly rated. This may be due to a few hikers having bad experiences on the trails and rating them poorly. 
+
+```{r}
+park_lm_rating <- parks[ , -which(names(parks) %in% c("trail_id", "name", "area_name", "city_name", "state_name", "country_name", "X_geoloc", "popularity", "length", "elevation_gain", "difficulty_rating", "route_type", "num_reviews", "features", "activities", "units"))]
+park_lm_rating[is.na(park_lm_rating)] = 0
+Model <- lm(avg_rating ~ dog_no + forest + river + view + waterfall + wild_flowers + partially_paved + lake + kids+ historic_site+ dogs_leash+ ada+ beach+ cave+ paved+ strollers+ hot_springs+ city_walk+ rails_trails_feat+ dogs, data = park_lm_rating)
+summary(Model)
+```
+
+I decided to end my analysis on Average Trail Rating associated with each Feature, by running a Simple Linear Model. The most significant Features are View and Waterfall, and the slightly significant Features are Beach, Lake and River. This is very interesting to see as 4 of these Features are Water Related. **This shows that there is a relationship between Water Related Features and Average Trail Rating.**
+
+## Features by Popularity
+
+```{r}
+summary(parks$popularity)
+```
+The popularity variable is a score from 0 to 100 of how often the trail is used. As we can see the max in the data is 84.6, meaning the trails are never at max capacity. However, the mean popularity score is about 9, meaning that the trails are usually not very populated, which is ideal for hiking.
+
+```{r}
+parks_feat %>% 
+  group_by(Features) %>% 
+  summarise(AvgPopularity_Feat = mean(popularity)) %>%
+  arrange(desc(AvgPopularity_Feat))
+```
+```{r}
+parks_feat %>% 
+  group_by(Features) %>% 
+  summarise(AvgPopularity_Feat = mean(popularity)) %>%
+  ggplot(aes(x=Features, y=AvgPopularity_Feat, fill=Features))+
+  geom_col() +
+  coord_cartesian(ylim = c(5,21)) + 
+  theme(legend.position = "none") +
+  ggtitle("National Park Trail Features by Average Popularity") +
+  ylab("Average Popularity") +
+  theme(axis.text.x = element_text(angle = 90)) 
+```
+
+Here we can see that the most popular trails for hikers are ones that are Partially Paved. The second most popular feature is Paved, followed by Strollers, then ADA, and then Rails. THese top Features ll have to do with **Accessibility**
+This makes sense as Paved trails are more accessible and are usually easier to hike through, and when trails are more easier and accessible they tend to be more populated by hikers. Strollers and Paved trails may be correlated as it is easier to push a Stroller on a Paved path, rather than push it through dirt. The same goes for ADA and Paved trails. ADA stands for Americans with Disabilities Act of 1990. Hikes tend to be hard on being with disabilities, so making them more accessible is a good way to allow them to experience the same trails as others. 
+
+Three Water Related Features again made it into the Top 10 Popular Features. These Features are Waterfall, Beach, and River, which were in the Top 5 Highest Rated Features. **This is again showing a strong sign that Well-Liked trails have to do with Water related features.**
+
+```{r}
+parks_feat %>% 
+  ggplot(aes(x=Features, y=popularity, fill=Features))+
+  geom_boxplot() + 
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 90)) +
+  ggtitle("Spread of Popularity for each Feature")
+```
+
+Here we can see that the spread of values for these features never passes a popularity of 30, with a majority of the averages begin below a popularity of 20. The rest are all outliers with higher popularity. These outliers may be due to certain days, like Holidays, when many people decide to go hiking on the same trails. 
+
+```{r}
+park_lm_pop <- parks[ , -which(names(parks) %in% c("trail_id", "name", "area_name", "city_name", "state_name", "country_name", "X_geoloc", "avg_rating", "length", "elevation_gain", "difficulty_rating", "route_type", "num_reviews", "features", "activities", "units"))]
+park_lm_pop[is.na(park_lm_pop)] = 0
+Model2 <- lm(popularity ~ dog_no + forest + river + view + waterfall + wild_flowers + partially_paved + lake + kids+ historic_site+ dogs_leash+ ada+ beach+ cave+ paved+ strollers+ hot_springs+ city_walk+ rails_trails_feat+ dogs, data = park_lm_pop)
+summary(Model2)
+```
+
+Finally, I ran a Simple Linear Model to see the Popularity associated with each Feature. There are 12 significant Features in this model. The most significant Features are View, Waterfall, Wild Flowers, Partially Paved, Paved and Kids. The slightly significant features are Hot Springs, Cave, Beach, Historic Site, and River. There are again 4 Water Related Features that are significant to predicting the popularity of a trail. This again **shows that there is a relationship between Water Related Features and Popularity.**
+
+## Conclusion for Features 
+In conclusion, my analysis leads me to believe that Well-Liked trails have **Water Related Features**, such as a Waterfall, Beach, River, or Lake, and are **easily accessible** to everyone, such as Trail Railing and Paved Paths. 
+
+
+# What activities make a park or trail well-liked by hikers?
+
+```{r}
+parks$activities <- str_replace_all(parks$activities, "'", "")
+parks$activities <- str_replace_all(parks$activities, "\\[", "")
+parks$activities <- str_replace_all(parks$activities, "\\]", "")
+parks$activities <- str_replace_all(parks$activities, " ", "")
+parks$activities <- str_split(parks$activities, ",")
+```
+
+```{r}
+Reduce(union, parks$activities)
+```
+
+```{r, message = FALSE, warning = FALSE}
+parks$birding <- ifelse(str_detect(parks$activities, "birding"), 1, NA)
+parks$camping <- ifelse(str_detect(parks$activities, "camping"), 1, NA)
+parks$hiking <- ifelse(str_detect(parks$activities, "hiking"), 1, NA)
+parks$nature_trips <- ifelse(str_detect(parks$activities, "nature-trips"), 1, NA)
+parks$trail_running <- ifelse(str_detect(parks$activities, "trail-running"), 1, NA)
+parks$walking <- ifelse(str_detect(parks$activities, "walking"), 1, NA)
+parks$fishing <- ifelse(str_detect(parks$activities, "fishing"), 1, NA)
+parks$backpacking <- ifelse(str_detect(parks$activities, "backpacking"), 1, NA)
+parks$sea_kayaking <- ifelse(str_detect(parks$activities, "sea-kayaking"), 1, NA)
+parks$canoeing <- ifelse(str_detect(parks$activities, "canoeing"), 1, NA)
+parks$mountain_biking <- ifelse(str_detect(parks$activities, "mountain-biking"), 1, NA)
+parks$horseback_riding <- ifelse(str_detect(parks$activities, "horseback-riding"), 1, NA)
+parks$scenic_driving <- ifelse(str_detect(parks$activities, "scenic-driving"), 1, NA)
+parks$road_biking <- ifelse(str_detect(parks$activities, "road-biking"), 1, NA)
+parks$off_road_driving <- ifelse(str_detect(parks$activities, "off-road-driving"), 1, NA)
+parks$rock_climbing <- ifelse(str_detect(parks$activities, "rock-climbing"), 1, NA)
+parks$snowshoeing <- ifelse(str_detect(parks$activities, "snowshoeing"), 1, NA)
+parks$cross_country_skiing <- ifelse(str_detect(parks$activities, "cross-country-skiing"), 1, NA)
+parks$fly_fishing <- ifelse(str_detect(parks$activities, "fly-fishing"), 1, NA)
+parks$paddle_sports <- ifelse(str_detect(parks$activities, "paddle-sports"), 1, NA)
+parks$skiing <- ifelse(str_detect(parks$activities, "skiing"), 1, NA)
+parks$bike_touring <- ifelse(str_detect(parks$activities, "bike-touring"), 1, NA)
+parks$whitewater_kayaking <- ifelse(str_detect(parks$activities, "whitewater-kayaking"), 1, NA)
+parks$rails_trails_act <- ifelse(str_detect(parks$activities, "rails-trails"), 1, NA)
+parks$ice_climbing <- ifelse(str_detect(parks$activities, "ice-climbing"), 1, NA)
+parks$surfing <- ifelse(str_detect(parks$activities, "surfing"), 1, NA)
+parks$snowboarding <- ifelse(str_detect(parks$activities, "snowboarding"), 1, NA)
+```
+
+```{r}
+parks_act <- parks %>% 
+  pivot_longer(birding:snowboarding,
+               names_to = "Activities", 
+               values_to = "Here")
+```
+
+```{r}
+parks_act <- parks_act[ , -which(names(parks_act) %in% c("dog_no", "forest", "river", "view", "waterfall", "wild_flowers", "partially_paved", "lake", "kids", "historic_site", "dogs_leash", "ada", "beach", "cave", "paved", "strollers", "hot_springs", "city_walk", "rails_trails_feat", "dogs"))]
+parks_act <- na.omit(parks_act)
+```
+
+```{r}
+parks_act <- parks_act %>% 
+  mutate(
+    Activities = factor(Activities)
+  )
+levels(parks_act$Activities)
+```
+## Activities by Average Trail Rating
+```{r}
+parks_act %>% 
+  group_by(Activities) %>% 
+  summarise(AvgRating_Act = mean(avg_rating)) %>% 
+  arrange(desc(AvgRating_Act))
+```
+```{r}
+parks_act %>% 
+  group_by(Activities) %>% 
+  summarise(AvgRating_Act = mean(avg_rating)) %>% 
+  ggplot(aes(x=Activities, y=AvgRating_Act, fill=Activities)) +
+  geom_col() +
+  coord_cartesian(ylim = c(3, 4.6))+ #https://stackoverflow.com/questions/21734557/r-ggplot-ylim-doesnt-work
+  theme(legend.position = "none") +
+  ggtitle("National Park Trail Activity Rating") +
+  ylab("Average Rating") +
+  theme(axis.text.x = element_text(angle = 90)) 
+```
+
+When examining the Average Trail Rating associated with each Activity, we can see that snowboarding is the most highly rated Activity. The next four activities are Rails trails, Rock Climbing, Skiing, and Cross Country Skiing. Surprisingly, there are 7 Water Related Activities, however, they were not rated very highly. However, there are **5 Snow Related Activities** (Snowboarding, Snowshoeing, Ice Climbing, Skiing and Cross Country Skiing), 4 of which placed in the Top 6 Highly Rated Activities. Interestingly, most of the Top 10 Activities are physically activities, that are not the easiest to perform. The more relaxed activities, like Walking, Fishing, and Birding were not rated very highly. This shows that the **Well-Liked Trails** often have to do with **Physically Intensive Activities**. 
+
+```{r}
+parks_act %>% 
+  ggplot(aes(x=Activities, y=avg_rating, fill=Activities))+
+  geom_boxplot() + 
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 90))  +
+  ylab("Average Rating") +
+  ggtitle("Spread of Ratings for each Activity")
+```
+
+Here we can see the spread of the Review Ratings for each activity. Many of the outliers for each activity is rated below 4 stars. It is interesting to see that Surfing has the widest spread of values, without any outliers. This shows that surfing is usually rated very poorly, compared to other activities. 
+
+```{r}
+park_lm2_rating <- parks[ , -which(names(parks) %in% c("trail_id", "name", "area_name", "city_name", "state_name", "country_name", "X_geoloc", "popularity", "length", "elevation_gain", "difficulty_rating", "route_type", "num_reviews", "features", "activities", "units", "dog_no", "forest", "river", "view", "waterfall", "wild_flowers", "partially_paved", "lake", "kids", "historic_site", "dogs_leash", "ada", "beach", "cave", "paved", "strollers", "hot_springs", "city_walk", "rails_trails_feat", "dogs"))]
+park_lm2_rating[is.na(park_lm2_rating)] = 0
+Model2 <- lm(avg_rating ~ backpacking + bike_touring + birding + camping + canoeing + cross_country_skiing + fishing + fly_fishing + hiking + horseback_riding + ice_climbing + mountain_biking + nature_trips + off_road_driving + paddle_sports + rails_trails_act + road_biking + rock_climbing + scenic_driving + sea_kayaking + skiing + snowboarding + snowshoeing + surfing + trail_running + walking + whitewater_kayaking, data = park_lm2_rating)
+summary(Model2)
+```
+
+There are 8 significant Activities in this model, however, none of them are highly significant. The most significant activities are Walking, Scenic Driving, Rock Climbing, and Off Road Driving. The least significant activities are Surfing, Hiking, Camping, and Snowshoeing. Rock Climbing, Scenic Driving, and Snowshoeing are the only Activities from these significant ones, that appeared in the Top 10 Rated Activities for Trails. 
+
+## Activities by Popularity
+
+```{r}
+parks_act %>% 
+  group_by(Activities) %>% 
+  summarise(AvgPopularity_Act = mean(popularity)) %>% 
+  arrange(desc(AvgPopularity_Act))
+```
+```{r}
+parks_act %>% 
+  group_by(Activities) %>% 
+  summarise(AvgPopularity_Act = mean(popularity)) %>% 
+  ggplot(aes(x=Activities, y=AvgPopularity_Act, fill=Activities)) +
+  geom_col() +
+  coord_cartesian(ylim = c(5, 16))+ #https://stackoverflow.com/questions/21734557/r-ggplot-ylim-doesnt-work
+  theme(legend.position = "none") +
+  ggtitle("National Park Trail Activity Popularity") +
+  ylab("Popularity") +
+  theme(axis.text.x = element_text(angle = 90)) 
+```
+
+Interestingly, The Top 6 Highest rated Activities (Snowboarding, Rails Trails, Rock Climbing, Skiing, Cross Country Skiing and Snowshoeing) appeared in the Top 10 Most Popular Activities. With the exception of Fly Fishing, Horseback Riding, and Walking, the Top 10 Most Popular Activities are again very **physically intensive**. Snowboarding, Snowshoeing, Skiing, Cross Country Skiing, and Ice Climbing, which are pretty physically intensive, are all **Snow Related activities** and they placed in the Top 10 Most Popular activities, with Snowboarding and Snowshoeing being in the first and second spots. 
+
+```{r}
+parks_act %>% 
+  ggplot(aes(x=Activities, y=popularity, fill=Activities))+
+  geom_boxplot() + 
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 90))  +
+  ylab("Popularity") +
+  ggtitle("Spread of Popularity for each Activity")
+```
+
+Here we can see that the spread of values for these activites never passes a popularity of 25, with a majority of the averages begin below a popularity of 15. The rest are all outliers with higher popularity. 
+
+```{r}
+park_lm2_rating <- parks[ , -which(names(parks) %in% c("trail_id", "name", "area_name", "city_name", "state_name", "country_name", "X_geoloc", "avg_rating", "length", "elevation_gain", "difficulty_rating", "route_type", "num_reviews", "features", "activities", "units", "dog_no", "forest", "river", "view", "waterfall", "wild_flowers", "partially_paved", "lake", "kids", "historic_site", "dogs_leash", "ada", "beach", "cave", "paved", "strollers", "hot_springs", "city_walk", "rails_trails_feat", "dogs"))]
+park_lm2_rating[is.na(park_lm2_rating)] = 0
+Model2 <- lm(popularity ~ backpacking + bike_touring + birding + camping + canoeing + cross_country_skiing + fishing + fly_fishing + hiking + horseback_riding + ice_climbing + mountain_biking + nature_trips + off_road_driving + paddle_sports + rails_trails_act + road_biking + rock_climbing + scenic_driving + sea_kayaking + skiing + snowboarding + snowshoeing + surfing + trail_running + walking + whitewater_kayaking, data = park_lm2_rating)
+summary(Model2)
+```
+
+There are 13 significant Activities in this model. Backpacking, Birding, Rock Climbing, and Snowshoeing are the most significant activities. The less significant activities are Fly Fishing, Hiking, Horseback Riding, Paddle Sports, Canoeing, Snowboarding, Trail Running and Walking. With the exception of Hiking, Paddle Sports, Trail Running, and Canoeing, these significant Activities all appeared in the Top 10 Highest Rated and Top 10 Most Popular Activities for Trails. Out of these 13 significant Activities, 8 of them are **Physically Intensive activities**. 
+
+## Conclusion for Activities 
+In conclusion, my analysis leads me to believe that Well-Liked trails have **Physically Intensive Activities**, such as Rock Climbing, and it would help the trails too if there is **Snow** for activities such as Snowboarding, Skiing, and Snowshoeing. However, this is usually only possible during the winter time. 

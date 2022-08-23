@@ -1,0 +1,415 @@
+---
+title: "Lab4"
+author: "Nick Bias"
+date: "10/14/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(rvest)
+options(scipen=99)
+```
+## 2. Write a function stateabb() that takes a state name (assume it’s spelled correctly) and converts it to its state abbreviation.
+```{r, echo = TRUE}
+states <- function(state){
+  ifelse(state == "District of Columbia", "DC", state.abb[match(state,state.name)])
+}
+```
+
+```{r, echo = TRUE}
+teststate <- c("New York", "California", "District of Columbia")
+states(teststate)
+```
+
+## 1. Use the rvest package to scrape the data (from menuism.com like the link above) on state names and corresponding number of store locations
+## 3. Parse, merge and tidy your data so that you have a row for each state and two columns: state abbrevation, location count.
+
+### Starbucks
+```{r, echo = TRUE}
+starbucksurl <- "https://www.menuism.com/restaurant-locations/starbucks-coffee-39564"
+starbuckslink <- read_html(starbucksurl)
+starbuckshtml <- html_nodes(starbuckslink, css="blockquote , .list-unstyled-links a")
+starbuckstext <- html_text(starbuckshtml)
+```
+
+```{r, echo = TRUE}
+starbuckstext <- unlist(strsplit(starbuckstext[1:51], " Starbucks Coffee locations \\(", "\\n"))
+```
+
+```{r, echo = TRUE}
+starbucksdf <- data.frame(
+  State = starbuckstext[seq(from=1, to=102, by=2)],
+  Store_Count = starbuckstext[seq(from=2, to=102, by=2)]
+)
+```
+
+```{r, echo = TRUE}
+starbucksdf <- starbucksdf %>% 
+  mutate(
+    Store_Count = str_replace(Store_Count, "\\)", ""),
+    State = states(State)
+  )
+starbucksdf["Store"] <- "Starbucks"
+head(starbucksdf)
+```
+
+### Dunkin’ Donuts
+```{r, echo = TRUE}
+ddurl <- "https://www.menuism.com/restaurant-locations/dunkin-donuts-181624"
+ddlink <- read_html(ddurl)
+ddhtml <- html_nodes(ddlink, css=".list-unstyled-links li+ li , .locations-list-header+ li")
+ddtext <- html_text(ddhtml)
+```
+
+```{r, echo = TRUE}
+ddtext <- unlist(strsplit(ddtext[1:45], " Dunkin' Donuts locations \\(", "\\n"))
+```
+
+```{r, echo = TRUE}
+dddf <- data.frame(
+  State = ddtext[seq(from=1, to=90, by=2)],
+  Store_Count = ddtext[seq(from=2, to=90, by=2)]
+)
+```
+
+```{r, echo = TRUE}
+dddf <- dddf %>% 
+  mutate(
+    State = str_replace(State, "\n", ""),
+    Store_Count = str_replace(Store_Count, "\\)\n", ""),
+    State = states(State)
+  )
+dddf["Store"] <- "Dunkin’ Donuts"
+head(dddf)
+```
+
+### Peet’s Coffee & Tea
+```{r, echo = TRUE}
+pcturl <- "https://www.menuism.com/restaurant-locations/peets-coffee-tea-84051"
+pctlink <- read_html(pcturl)
+pcthtml <- html_nodes(pctlink, css=".list-unstyled-links li+ li , .locations-list-header+ li")
+pcttext <- html_text(pcthtml)
+```
+
+```{r, echo = TRUE}
+pcttext <- unlist(strsplit(pcttext[1:9], " Peet's Coffee & Tea locations \\(", "\\n"))
+```
+
+```{r, echo = TRUE}
+pctdf <- data.frame(
+  State = pcttext[seq(from=1, to=18, by=2)],
+  Store_Count = pcttext[seq(from=2, to=18, by=2)]
+)
+```
+
+```{r, echo = TRUE}
+pctdf <- pctdf %>% 
+  mutate(
+    State = str_replace(State, "\n", ""),
+    Store_Count = str_replace(Store_Count, "\\)\n", ""),
+    State = states(State)
+  )
+pctdf["Store"] <- "Peet’s Coffee & Tea"
+head(pctdf)
+```
+
+### Tim Horton’s
+```{r, echo = TRUE}
+timurl <- "https://www.menuism.com/restaurant-locations/tim-hortons-190025"
+timlink <- read_html(timurl)
+timhtml <- html_nodes(timlink, css=".list-unstyled-links li+ li , .locations-list-header+ li")
+timtext <- html_text(timhtml)
+```
+
+```{r, echo = TRUE}
+timtext <- unlist(strsplit(timtext[1:16], " Tim Hortons locations \\(", "\\n"))
+```
+
+```{r, echo = TRUE}
+timdf <- data.frame(
+  State = timtext[seq(from=1, to=32, by=2)],
+  Store_Count = timtext[seq(from=2, to=32, by=2)]
+)
+```
+
+```{r, echo = TRUE}
+timdf <- timdf %>% 
+  mutate(
+    State = str_replace(State, "\n", ""),
+    Store_Count = str_replace(Store_Count, "\\)\n", ""),
+    State = states(State)
+  )
+timdf["Store"] <- "Tim Horton’s"
+head(timdf)
+```
+
+### Panera Bread
+```{r, echo = TRUE}
+pburl <- "https://www.menuism.com/restaurant-locations/panera-bread-4258"
+pblink <- read_html(pburl)
+pbhtml <- html_nodes(pblink, css=".list-unstyled-links li+ li , .locations-list-header+ li")
+pbtext <- html_text(pbhtml)
+```
+
+```{r, echo = TRUE}
+pbtext <- unlist(strsplit(pbtext[1:46], " Panera Bread locations \\(", "\\n"))
+```
+
+```{r, echo = TRUE}
+pbdf <- data.frame(
+  State = pbtext[seq(from=1, to=92, by=2)],
+  Store_Count = pbtext[seq(from=2, to=92, by=2)]
+)
+```
+
+```{r, echo = TRUE}
+pbdf <- pbdf %>% 
+  mutate(
+    State = str_replace(State, "\n", ""),
+    Store_Count = str_replace(Store_Count, "\\)\n", ""),
+    State = states(State)
+  )
+pbdf["Store"] <- "Panera Bread"
+head(pbdf)
+```
+
+### Caribou Coffee
+```{r, echo = TRUE}
+ccurl <- "https://www.menuism.com/restaurant-locations/caribou-coffee-164861"
+cclink <- read_html(ccurl)
+cchtml <- html_nodes(cclink, css=".list-unstyled-links li")
+cctext <- html_text(cchtml)
+```
+
+```{r, echo = TRUE}
+cctext <- unlist(strsplit(cctext, " Caribou Coffee locations \\(", "\\n"))
+```
+
+```{r, echo = TRUE}
+ccdf <- data.frame(
+  State = cctext[seq(from=1, to=40, by=2)],
+  Store_Count = cctext[seq(from=2, to=40, by=2)]
+)
+```
+ 
+```{r, echo = TRUE}
+ccdf <- ccdf %>% 
+  mutate(
+    State = str_replace(State, "\n", ""),
+    Store_Count = str_replace(Store_Count, "\\)\n", ""),
+    State = states(State)
+  )
+ccdf["Store"] <- "Caribou Coffee"
+head(ccdf)
+```
+
+### Au Bon Pain
+```{r, echo = TRUE}
+abpurl <- "https://www.menuism.com/restaurant-locations/au-bon-pain-69342"
+abplink <- read_html(abpurl)
+abphtml <- html_nodes(abplink, css=".list-unstyled-links li")
+abptext <- html_text(abphtml)
+```
+
+```{r, echo = TRUE}
+abptext <- unlist(strsplit(abptext, " Au Bon Pain locations \\(", "\\n"))
+```
+
+```{r, echo = TRUE}
+abpdf <- data.frame(
+  State = abptext[seq(from=1, to=44, by=2)],
+  Store_Count = abptext[seq(from=2, to=44, by=2)]
+)
+```
+
+```{r, echo = TRUE}
+abpdf <- abpdf %>% 
+  mutate(
+    State = str_replace(State, "\n", ""),
+    Store_Count = str_replace(Store_Count, "\\)\n", ""),
+    State = states(State)
+  )
+abpdf["Store"] <- "Au Bon Pain"
+head(abpdf)
+```
+
+### The Coffee Bean & Tea Leaf
+```{r, echo = TRUE}
+cbturl <- "https://www.menuism.com/restaurant-locations/the-coffee-bean-tea-leaf-165988"
+cbtlink <- read_html(cbturl)
+cbthtml <- html_nodes(cbtlink, css=".list-unstyled-links li")
+cbttext <- html_text(cbthtml)
+```
+
+```{r, echo = TRUE}
+cbttext <- unlist(strsplit(cbttext, " The Coffee Bean & Tea Leaf locations \\(", "\\n"))
+```
+
+```{r, echo = TRUE}
+cbtdf <- data.frame(
+  State = cbttext[seq(from=1, to=16, by=2)],
+  Store_Count = cbttext[seq(from=2, to=16, by=2)]
+)
+```
+
+```{r, echo = TRUE}
+cbtdf <- cbtdf %>% 
+  mutate(
+    State = str_replace(State, "\n", ""),
+    Store_Count = str_replace(Store_Count, "\\)\n", ""),
+    State = states(State)
+  )
+cbtdf["Store"] <- "Coffee Bean & Tea Leaf"
+head(cbtdf)
+```
+
+### McDonald’s
+```{r, echo = TRUE}
+mcdonaldsurl <- "https://www.menuism.com/restaurant-locations/mcdonalds-21019"
+mcdonaldslink <- read_html(mcdonaldsurl)
+mcdonaldshtml <- html_nodes(mcdonaldslink, css=".list-unstyled-links li+ li , .locations-list-header+ li")
+mcdonaldstext <- html_text(mcdonaldshtml)
+```
+
+```{r, echo = TRUE}
+mcdonaldstext <- unlist(strsplit(mcdonaldstext[1:51], " McDonald's locations \\(", "\\n"))
+```
+
+```{r, echo = TRUE}
+mcdonaldsdf <- data.frame(
+  State = mcdonaldstext[seq(from=1, to=102, by=2)],
+  Store_Count = mcdonaldstext[seq(from=2, to=102, by=2)]
+)
+```
+
+```{r, echo = TRUE}
+mcdonaldsdf <- mcdonaldsdf %>% 
+  mutate(
+    State = str_replace(State, "\n", ""),
+    Store_Count = str_replace(Store_Count, "\\)\n", ""),
+    State = states(State)
+  )
+mcdonaldsdf["Store"] <- "McDonalds"
+head(mcdonaldsdf)
+```
+
+```{r, echo = TRUE}
+coffee <- rbind(starbucksdf, dddf)
+coffee <- rbind(coffee, pctdf)
+coffee <- rbind(coffee, timdf)
+coffee <- rbind(coffee, pbdf)
+coffee <- rbind(coffee, ccdf)
+coffee <- rbind(coffee, abpdf)
+coffee <- rbind(coffee, cbtdf)
+coffee <- rbind(coffee, mcdonaldsdf)
+
+coffee <- coffee %>% 
+  mutate(
+    Store_Count = as.numeric(Store_Count)
+  )
+```
+
+
+
+# Supplemental Data
+## 4. Scrape the state names and populations from this wikipedia page. Convert the state names to abbreviations and merge these data with your coffee dataset.
+```{r, echo=TRUE}
+populationurl <- "https://simple.wikipedia.org/wiki/List_of_U.S._states_by_population"
+populationlink <- read_html(populationurl)
+populationhtml <- html_nodes(populationlink, css="td:nth-child(4) , .flagicon+ a")
+populationtext <- html_text(populationhtml)
+```
+
+```{r, echo = TRUE}
+#starbuckstext <- unlist(strsplit(starbuckstext[1:51], " Starbucks Coffee locations \\(", "\\n"))
+```
+
+```{r, echo = TRUE}
+populationdf <- data.frame(
+  State = populationtext[seq(from=1, to=104, by=2)],
+  Population = populationtext[seq(from=2, to=104, by=2)]
+)
+populationdf
+```
+
+```{r, echo = TRUE}
+populationdf <- populationdf %>% 
+  mutate(
+    State = str_replace(State, "\\n.*", ""),
+    Population = str_replace(Population, "\\n", ""),
+    Population = as.numeric(str_replace_all(Population, ",", "")),
+    State = states(State)
+  )
+populationdf <- populationdf[-c(31),]
+head(populationdf)
+```
+
+```{r, echo = TRUE}
+store_pop <- full_join(coffee, populationdf, by = c("State"))
+head(store_pop)
+```
+
+## 5. Find the revenue, stock price, or your financial metric of choice for each of the companies listed above (if you can find a website to scrape these from that’s great!…but it’s okay if you manually enter these into R). Merge these values into your big dataset. Note: these values may be repeated for each state.
+```{r, echo = TRUE}
+store_pop_rev <- store_pop %>% 
+  mutate(
+    Revenue = case_when(Store == "Starbucks" ~  23500000000,
+          Store == "Dunkin’ Donuts" ~  287400000,
+          Store == "Peet’s Coffee & Tea" ~ 7890000000,
+          Store == "Tim Horton’s" ~ 1880000000,
+          Store == "Panera Bread" ~ 5900000000,
+          Store == "Caribou Coffee" ~ 338000000,
+          Store == "Au Bon Pain" ~ 296600000,
+          Store == "Coffee Bean & Tea Leaf" ~ 313000000,
+          Store == "McDonalds" ~ 19210000000)
+  )
+head(store_pop_rev)
+```
+
+
+
+
+## 6. Create a region variable in your dataset according to the scheme on this wikipedia page: Northeast, Midwest, South, West. You do not need to scrape this information.
+```{r, echo = TRUE}
+store_pop_rev_reg <- store_pop_rev %>% 
+  mutate(
+    Region  = case_when(
+      State %in% c("CT", "ME", "MA", "NH", "RI", "VT", "NJ", "NY", "PA") ~  "Northeast", 
+      State %in% c("IL", "IN", "MI", "OH", "WI", "IA", "KS", "MN", "MO", "NE", "ND", "SD")  ~  "Midwest",
+      State %in% c("DE", "FL", "GA", "MD", "NC", "SC", "VA", "DC", "WV", "AL", "KY", "MS", "TN", "AR", "LA", "OK", "TX") ~ "South",
+      State %in% c("AZ", "CO", "ID", "MT", "NV", "NM", "UT", "WY", "AK", "CA", "HI", "OR", "WA")  ~ "West"
+          )
+  )
+head(store_pop_rev_reg)
+```
+
+## 7. Assess and comment on the prevalence of each chain. 
+##### Are some of these chains more prevalent in certain states than others? Possibly despite having less stores overall? Same questions for regions instead of states.
+Starbucks, McDonalds, Peet’s Coffee & Tea, and Coffee Bean & Tea Leaf are the most prevalent chains in CA 
+Au Bon Pain and Dunkin’ Donuts is most prevalent in MA
+Caribou Coffee is most prevalent in MN
+Panera Bread is most prevalent in FL
+Tim Horton’s is most prevalent in MI
+
+The Midwest has the least amount of chain stores in it, with McDonalds being the most prevalent. 
+The Northeast has the third most amount of chain stores in it, with Dunkin’ Donuts being the most prevalent. 
+The South has the second most chain stores in it, with McDonalds being the most prevalent. 
+The West has the most amount of chain stores in it, with Starbucks being the most prevalent. 
+
+##### Does the distribution of each chain’s stores match population distribution, by both state/region?
+States with the largest population tend to have the most chain stores located within them. For example CA and TX have the largest populations and the most Starbucks and McDonalds compared to any other state. Whereas states with smaller populations, like WY, have the smallest amount of chain stores. 
+
+##### Do the financial data match what you’d expect based on the number and locations of the stores? Why or why not?
+Stores with the most locations tend to have the largest yearly revenue, for example McDonalds and Starbucks are located in all 50 states and make the most yearly revenue. Except in the case with Dunkin'Donuts, which has locations in all 50 states, but has the lowest revenue. 
+However, Peet's Coffee does not have many locations but makes the 3rd largest revenue. This may be due to popularity in these areas. 
+

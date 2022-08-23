@@ -1,0 +1,517 @@
+---
+title: "Lab9"
+author: "Nick Bias"
+date: "12/4/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(rpart.plot)
+library(discrim)
+library(baguette)
+library(janitor)
+library(vip)
+library(parallel)
+library(nnet)
+options(scipen=99)
+```
+
+# Dataset 1: Mushrooms
+```{r}
+mushrooms <- read_csv("https://www.dropbox.com/s/jk5q3dq1u63ey1e/mushrooms.csv?dl=1",
+                      col_types = str_c(rep("c", 23), collapse = "")) 
+```
+
+```{r}
+mushrooms <- mushrooms %>% 
+  mutate(
+    Class = factor(class),
+    capShape = factor(`cap-shape`),
+    capSurface = factor(`cap-surface`),
+    capColor = factor(`cap-color`),
+    Bruises = factor(bruises),
+    Odor = factor(odor),
+    gillAttachment = factor(`gill-attachment`),
+    gillSpacing = factor(`gill-spacing`),
+    gillSize = factor(`gill-size`),
+    gillColor = factor(`gill-color`),
+    stalkShape = factor(`stalk-shape`),
+    stalkRoot = factor(`stalk-root`),
+    stalkSurfaceAboveRing = factor(`stalk-surface-above-ring`),
+    stalkSurfaceBelowRing = factor(`stalk-surface-below-ring`),
+    stalkColorAboveRing = factor(`stalk-color-above-ring`),
+    stalkColorBelowRing = factor(`stalk-color-below-ring`),
+    veilColor = factor(`veil-color`),
+    ringNumber = factor(`ring-number`),
+    ringType = factor(`ring-type`),
+    sporePrintColor = factor(`spore-print-color`),
+    Population = factor(population),
+    Habitat = factor(habitat)
+  ) 
+
+mushrooms <- mushrooms[,c(24:45)]
+```
+
+```{r}
+mush_rec <- recipe(Class ~ ., data = mushrooms) %>% 
+  step_dummy(all_nominal(), -all_outcomes())
+```
+
+```{r}
+set.seed(48378)
+mush_cv5 <- vfold_cv(mushrooms, v = 5)
+```
+
+```{r}
+set.seed(48378)
+split <- initial_split(mushrooms, strata = Class)
+
+mush_train <- split %>% training()
+mush_test <- split %>% testing()
+```
+
+## Part One: A perfect tree
+```{r}
+tree_mod <- decision_tree() %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+  
+tree_wflow <- workflow() %>%
+  add_recipe(mush_rec) %>%
+  add_model(tree_mod)
+
+dt_fit_model <- tree_wflow %>%
+  fit(mushrooms) %>% 
+  pull_workflow_fit()
+
+rpart.plot(dt_fit_model$fit)
+```
+
+If the Mushroom is not smelly and its spore print color is green than it is poisonous. 
+If the mushroom does smell, does not have club or rooted stalk root and the odor is anise than is is poisonous. 
+
+## Part Two: … or is it?
+
+### Q1: Cross-validation
+```{r}
+tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(),
+                          min_n(), 
+                          levels = 2)
+
+tree_mod <- decision_tree(cost_complexity = tune(),
+                          tree_depth = tune(),
+                          min_n = tune()) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+tree_wflow <- workflow() %>%
+  add_recipe(mush_rec) %>%
+  add_model(tree_mod)
+```
+
+```{r}
+tree_grid_search <-
+  tune_grid(
+    tree_wflow,
+    resamples = mush_cv5,
+    grid = tree_grid
+  )
+```
+
+```{r}
+tuning_metrics <- tree_grid_search %>% collect_metrics()
+tuning_metrics
+```
+
+```{r}
+tuning_metrics %>% 
+  filter(.metric == "accuracy") %>% 
+  slice_max(mean)
+```
+
+```{r}
+best <- select_best(tree_grid_search, metric = "accuracy")
+workflow <- tree_wflow %>% 
+  finalize_workflow(best)
+
+tree_fit <- workflow %>% 
+  fit(mushrooms) %>% 
+  pull_workflow_fit()
+
+rpart.plot(tree_fit$fit)
+```
+
+The classification rules we learned in Part One probably apply to all mushrooms, as we can see in this decision tree, the first half of it is the same as the decision tree in Part one, it is just further classified. However, the accuracy for this model is 1, which leads me to believe that there might be overfitting, and the model should be further tested.  
+
+### Q2: Bagging
+```{r}
+bag_tree_spec <- bag_tree() %>%
+  set_engine("rpart", times = 25) %>%
+  set_mode("classification")
+
+bag_tree_wflow <- workflow() %>%
+  add_recipe(mush_rec) %>%
+  add_model(bag_tree_spec)
+
+bag_tree_fit <- bag_tree_wflow %>%
+  fit(mushrooms) %>% 
+  extract_fit_parsnip()
+
+bag_tree_fit
+```
+
+```{r}
+bag_fit <- bag_tree_wflow %>% 
+  fit_resamples(mush_cv5)
+
+bag_metrics <- bag_fit %>% collect_metrics()
+bag_metrics
+```
+
+From the initial decision tree, we learned that Odor, Spore Print Color, and Stalk Root were important variables to classifying the mushrooms. And when we look at the tuned decision tree, we see that the added important variables are stalk Surface Below Ring, cap surface, gill size, gill spacing and Bruises. From the bagging model we can see that the most important variables from the previous models are the most important variables for bagging as well. So we can assume that the classification rules we learned in Part One probably apply to all mushrooms. However, the accuracy for this model is 1, which leads me to believe that there might be overfitting, and the model should be further tested.  
+
+### Q3: Random forests
+```{r}
+cores <- detectCores()
+
+rf_mod <- 
+  rand_forest(trees = 1000) %>% 
+  set_engine("ranger", num.threads = cores, importance = "impurity") %>% 
+  set_mode("classification")
+  
+rf_wflow <- workflow() %>%
+  add_recipe(mush_rec) %>%
+  add_model(rf_mod) %>% 
+  last_fit(split)
+```
+
+```{r}
+rf_wflow2 <- workflow() %>%
+  add_recipe(mush_rec) %>%
+  add_model(rf_mod)
+
+bag_fit <- rf_wflow2 %>% 
+  fit_resamples(mush_cv5)
+
+bag_metrics <- bag_fit %>% collect_metrics()
+bag_metrics
+```
+
+```{r}
+rf_wflow %>% 
+  pluck(".workflow", 1) %>%   
+  pull_workflow_fit() %>% 
+  vip(num_features = 22)
+```
+
+Once again, the some of the most important variables for the Random Forest are Odor and spore print color, which appeared as the most important variables from part one. So we can assume that the classification rules we learned in Part One probably apply to all mushrooms. However, the accuracy for this model is 1, which leads me to believe that there might be overfitting, and the model should be further tested.  
+
+### Q4: Neural networks
+```{r}
+nn_mush_mod <- mlp() %>%
+  set_engine("nnet") %>%
+  set_mode("classification")
+
+nn_mush_wflow <- workflow() %>%
+  add_recipe(mush_rec) %>%
+  add_model(nn_mush_mod)
+
+# Fit the Model
+nn_mush_fit <- nn_mush_wflow %>%
+  fit_resamples(mush_cv5, metrics = metric_set(accuracy, roc_auc, recall, precision))
+
+#Collect Metrics
+nn_mush_fit %>% collect_metrics()
+```
+
+```{r}
+nn_fit <- nn_mush_wflow %>%
+  fit(mushrooms) %>% 
+  extract_fit_parsnip()
+```
+
+Since Neural Networks are a blackbox it is hard to see if the important variables match that of the first decision tree. However, this model has an accuracy lower than random forest and bagging models. The accuracy for this model is very close to 1, which leads me to believe that there might be overfitting, and the model should be further tested. So the classification rules we learned in Part One are overfit to this particular sample of mushrooms and/or set off predictors.
+
+
+## Part Three: Logistic Regression
+```{r}
+log_reg_spec <- logistic_reg() %>%
+  set_mode("classification") %>%
+  set_engine("glm")
+
+mush_log_rec <- recipe(Class ~ Odor + sporePrintColor + stalkRoot + stalkSurfaceBelowRing + capSurface + gillSize + Bruises + gillSpacing + stalkRoot + stalkSurfaceAboveRing + ringType + capColor, data=mushrooms)
+
+mush_wflow <- workflow() %>% 
+  add_model(log_reg_spec) %>% 
+  add_recipe(mush_log_rec)
+
+model_fit <- mush_wflow %>% 
+  fit(mushrooms)
+
+wflow_fit <- model_fit %>% pull_workflow_fit() 
+wflow_fit$fit %>% summary()
+```
+
+```{r}
+log_fit <- mush_wflow %>% 
+  fit_resamples(mush_cv5, metrics = metric_set(accuracy, roc_auc, recall, precision))
+
+log_fit %>% collect_metrics()
+```
+
+Based on the results from part 2, the most important variables from all the models were:
+
+- Odor 
+- Spore Print Color 
+- Stalk Root 
+- Stalk Surface Below Ring 
+- Cap Surface 
+- Gill Size 
+- Bruises 
+- Gill Spacing 
+- Stalk Root 
+- Stalk Surface Above Ring 
+- Ring Type 
+- Cap Color
+
+Through using only these variables the logistic regression model was able to achieve accuracy, precision, recall, and roc_auc of 1. Meaning these variables are the mushroom features that are most indicative of poisonness. 
+
+# Dataset 2: Telecom Customers
+```{r, message = FALSE}
+tele <- read_csv("https://www.dropbox.com/s/9dymy30v394ud8h/Telecust1.csv?dl=1")
+
+tele <- tele %>% 
+  mutate(
+    custcat = factor(custcat),
+    region = factor(region),
+    marital = factor(marital),
+    address = factor(address),
+    ed = factor(ed),
+    retire = factor(retire),
+    gender = factor(gender),
+    reside = factor(reside)
+  )
+
+set.seed(1)
+tele_cv5 <- vfold_cv(tele, v = 5)
+```
+#### Decision Tree
+```{r}
+tele_rec <- recipe(custcat ~ ., data = tele) %>% 
+  step_normalize(all_numeric()) %>% 
+  step_dummy(all_nominal(), -all_outcomes())
+```
+
+```{r}
+tree_mod <- decision_tree() %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+tree_wflow <- workflow() %>%
+  add_recipe(tele_rec) %>%
+  add_model(tree_mod)
+```
+
+```{r}
+tree_fit <- tree_wflow %>%
+  fit_resamples(resamples = tele_cv5,
+                metrics = metric_set(accuracy, roc_auc, precision, recall), 
+                control = control_resamples(save_pred = TRUE))
+
+dt <- tree_fit %>% collect_metrics() %>% mutate(Model="Decision Tree", .before=.metric)
+```
+Tuning produced worse results than a base model 
+
+#### Random Forest 
+```{r}
+cores <- detectCores()
+
+rf_mod <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_engine("ranger", num.threads = cores) %>% 
+  set_mode("classification")
+  
+forest_wflow <- workflow() %>%
+  add_recipe(tele_rec) %>%
+  add_model(rf_mod)
+```
+
+```{r, message = FALSE}
+rf_res <- 
+  tune_grid(forest_wflow,
+            resamples = tele_cv5,
+            grid = 10,
+            control = control_grid(save_pred = TRUE))
+```
+
+```{r}
+tuning_metrics2 <- rf_res %>% collect_metrics()
+tuning_metrics2
+```
+
+```{r}
+tuning_metrics2 %>% 
+  filter(.metric == "accuracy") %>% 
+  slice_max(mean)
+```
+
+```{r}
+best2 <- select_best(rf_res, metric = "accuracy")
+
+workflow2 <- forest_wflow %>% 
+  finalize_workflow(best2)
+```
+
+```{r}
+rf_fit <- workflow2 %>%
+  fit_resamples(resamples = tele_cv5,
+                metrics = metric_set(accuracy, roc_auc, precision, recall), 
+                control = control_resamples(save_pred = TRUE))
+
+rf <- rf_fit %>% collect_metrics() %>% mutate(Model="Random Forest", .before=.metric)
+```
+
+#### Neural Network
+```{r}
+nn_grid <- grid_regular(
+  hidden_units(c(2, 12)),
+  penalty(c(-5, 0)),
+  levels = 3
+)
+
+nn_mod_tune <- mlp(
+  hidden_units = tune(),
+  penalty = tune(),
+  epochs = 100,
+  activation = "linear") %>%
+  set_engine("nnet") %>%
+  set_mode("classification")
+
+nn_wflow_tune <- workflow() %>%
+  add_recipe(tele_rec) %>%
+  add_model(nn_mod_tune)
+```
+
+```{r}
+nn_grid_search <-
+  tune_grid(
+    nn_wflow_tune,
+    resamples = tele_cv5,
+    grid = nn_grid
+  )
+
+tuning_metrics <- nn_grid_search %>%
+  collect_metrics()
+tuning_metrics
+```
+
+```{r}
+best3 <- select_best(nn_grid_search, metric = "accuracy")
+
+workflow3 <- nn_wflow_tune %>% 
+  finalize_workflow(best3)
+```
+
+```{r}
+nn_fit <- workflow3 %>%
+  fit_resamples(resamples = tele_cv5,
+                metrics = metric_set(accuracy, roc_auc, precision, recall), 
+                control = control_resamples(save_pred = TRUE))
+
+nn <- nn_fit %>% collect_metrics() %>% mutate(Model="Neural Network", .before=.metric)
+```
+
+```{r}
+qda_mod <- discrim_regularized(frac_common_cov = 0) %>% 
+             set_engine('klaR') %>% 
+             set_mode('classification')
+
+zoo_wflow_qda <- workflow() %>% 
+  add_model(qda_mod) %>% 
+  add_recipe(tele_rec)
+
+model_cv_qda <- zoo_wflow_qda %>% 
+  fit_resamples(resamples = tele_cv5, 
+                metrics = metric_set(accuracy, roc_auc, recall, precision),
+                control = control_resamples(save_pred = TRUE)) 
+
+qda <- model_cv_qda %>% collect_metrics() %>% mutate(Model="QDA", .before=.metric)
+```
+
+```{r}
+Model_Comp <- rbind(dt, rf, nn, qda) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+Model_Comp
+```
+
+After tuning and running multiple models, the accuracy never achieved more than 40%. The model with the highest accuracy was the **Decision Tree**. 
+
+```{r}
+tree_fit2 <- tree_wflow %>% 
+  fit(tele) %>% 
+  pull_workflow_fit()
+
+rpart.plot(tree_fit2$fit)
+```
+
+The variables that were the most important in the Decision Tree were:
+
+- Tenure
+- Education Level 
+- Income
+
+- **A** Customers are classified as having tenure less than 0.046, they do not have an education level of 4 or 5. 
+- **B** Customers are classified as having tenure greater than 0.046, they do not have an education level of 4, and they have income less than -0.3. 
+- **C** Customers are classified as having tenure greater than 0.046, they do not have an education level of 4 or 5. 
+- **D** Customers are classified as having an education level of 4 or 5, and income greater than -0.3. 
+
+### Part Four: Report to your manager
+
+After tuning and running multiple models, the accuracy never achieved more than 40%. The models used were **Decision Tree**, **Random Forest**, **Neural Network**, and **QDA**. 
+
+```{r, echo=FALSE}
+Model_Comp
+```
+
+As we can see in the table above, the model with the highest accuracy, precision and recall was the **Decision Tree**. This accuracy is only 39.4%. This is not necessarily amazing accuracy, but there are only 4 customer classes, and if we randomly classify customers we have a 25% chance of classifying them correctly. So this model is 14.4% better at predicting the customer classes, than randomly classifying. 
+
+```{r, echo = FALSE}
+rpart.plot(tree_fit2$fit)
+```
+
+The **Most Important Variables** for customer classification:
+
+- Tenure
+- Education Level 
+- Income
+
+**Customer Classification**
+
+- **A** Customers
+  - Mid to lower than average Tenure
+  - Do not have an education level of 4 or 5. 
+- **B** Customers 
+  - Higher Tenure
+  - Education level of 4
+  - Lower than average Income 
+- **C** Customers 
+  - Higher Tenure
+  - Do not have an education level of 4 or 5 
+- **D** Customers 
+  - Education Level of 4 or 5 
+  - Sometimes have higher Income. 
+ 

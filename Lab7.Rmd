@@ -1,0 +1,520 @@
+---
+title: "Lab7"
+author: "Nick Bias"
+date: "11/12/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message= FALSE}
+library(ISLR)
+library(tidyverse)
+library(tidymodels)
+library(kknn)
+library(ROCR)
+options(scipen=99)
+```
+
+# Data
+```{r}
+ha <- read_csv("https://www.dropbox.com/s/aohbr6yb9ifmc8w/heart_attack.csv?dl=1")
+summary(ha)
+```
+```{r}
+ha <- ha %>% 
+  mutate(
+    output = factor(as.character(output))
+  )
+```
+
+```{r}
+ha %>% 
+  ggplot(aes(x=output, y=age, fill=output)) +
+  geom_boxplot()
+```
+```{r}
+ha %>% 
+  ggplot(aes(x=output, y=sex, fill=output)) +
+  geom_boxplot()
+```
+```{r}
+ha %>% 
+  ggplot(aes(x=output, y=cp, fill=output)) +
+  geom_boxplot()
+```
+```{r}
+ha %>% 
+  ggplot(aes(x=output, y=trtbps, fill=output)) +
+  geom_boxplot()
+```
+```{r}
+ha %>% 
+  ggplot(aes(x=output, y=chol, fill=output)) +
+  geom_boxplot()
+```
+```{r}
+ha %>% 
+  ggplot(aes(x=output, y=restecg, fill=output)) +
+  geom_boxplot()
+```
+```{r}
+ha %>% 
+  ggplot(aes(x=output, y=thalach, fill=output)) +
+  geom_boxplot()
+```
+
+Overall, the output seems to have the same spread of values, as in there is not clear difference in the output for each variable.
+
+
+```{r}
+ha <- ha %>% 
+  mutate(
+    sex = factor(as.character(sex)),
+    cp = factor(as.character(cp)),
+    restecg = factor(as.character(restecg))
+  )
+```
+
+
+# Part One: Fitting Models
+This section asks you to create a final best model for each of the model types studied this week. For each, you should:
+
+- Find the best model based on roc.auc for predicting the target variable.
+- Output a confusion matrix; that is, the counts of how many observations fell into each predicted class for each true class. (Hint: Code is provided from lecture; alternatively, conf_mat is a nice shortcut function for this task.)
+- Report the (cross-validated!) roc.auc metric.
+- Fit the final model.
+- (Where applicable) Interpret the coefficients and/or estimates produced by the model fit.
+
+## Q1: KNN
+```{r}
+knn_mod <- nearest_neighbor(neighbors = 5) %>%
+  set_engine("kknn") %>%
+  set_mode("classification")
+
+ha_rec_knn1 <- recipe(output ~ age + sex + cp + trtbps + chol + restecg + thalach, data = ha) %>% 
+  step_dummy(cp, restecg)
+
+ha_wflow_knn1 <- workflow() %>% 
+  add_model(knn_mod) %>% 
+  add_recipe(ha_rec_knn1)
+```
+
+```{r}
+ha_rec_knn2 <- recipe(output ~ sex + cp + trtbps + chol+ thalach, data = ha) %>% 
+  step_dummy(cp) #all significant variables
+
+ha_wflow_knn2 <- workflow() %>% 
+  add_model(knn_mod) %>% 
+  add_recipe(ha_rec_knn2)
+```
+
+```{r}
+ha_rec_knn3 <- recipe(output ~ sex + cp + thalach, data = ha) %>% 
+  step_dummy(cp)
+
+ha_wflow_knn3 <- workflow() %>% 
+  add_model(knn_mod) %>% 
+  add_recipe(ha_rec_knn3)
+```
+
+```{r}
+ha_rec_knn4 <- recipe(output ~ cp + trtbps + chol + restecg + thalach, data = ha) %>% 
+  step_dummy(cp) 
+
+ha_wflow_knn4 <- workflow() %>% 
+  add_model(knn_mod) %>% 
+  add_recipe(ha_rec_knn4)
+```
+
+```{r}
+ha_rec_knn5 <- recipe(output ~ sex + age + cp + trtbps + chol+ thalach, data = ha) %>% 
+  step_dummy(cp)
+
+ha_wflow_knn5 <- workflow() %>% 
+  add_model(knn_mod) %>% 
+  add_recipe(ha_rec_knn5)
+```
+
+```{r}
+set.seed(48378)
+ha_cvs_5 <- vfold_cv(ha, v = 5)
+
+model_cv_knn1 <- knn_mod %>% 
+  fit_resamples(ha_rec_knn1, resamples = ha_cvs_5, control = control_resamples(save_pred = TRUE)) 
+
+model_cv_knn2 <- knn_mod %>% 
+  fit_resamples(ha_rec_knn2, resamples = ha_cvs_5, control = control_resamples(save_pred = TRUE))
+
+model_cv_knn3 <- knn_mod %>% 
+  fit_resamples(ha_rec_knn3, resamples = ha_cvs_5, control = control_resamples(save_pred = TRUE))
+  
+model_cv_knn4 <- knn_mod %>% 
+  fit_resamples(ha_rec_knn4, resamples = ha_cvs_5, control = control_resamples(save_pred = TRUE))
+
+model_cv_knn5 <- knn_mod %>% 
+  fit_resamples(ha_rec_knn5, resamples = ha_cvs_5, control = control_resamples(save_pred = TRUE))
+
+m1 <- model_cv_knn1 %>% collect_metrics() %>% mutate(Model="Model 1", .before=.metric)
+m2 <- model_cv_knn2 %>% collect_metrics() %>% mutate(Model="Model 2", .before=.metric)
+m3 <- model_cv_knn3 %>% collect_metrics() %>% mutate(Model="Model 3", .before=.metric)
+m4 <- model_cv_knn4 %>% collect_metrics() %>% mutate(Model="Model 4", .before=.metric)
+m5 <- model_cv_knn5 %>% collect_metrics() %>% mutate(Model="Model 5", .before=.metric)
+```
+
+```{r}
+Model_Comp <- rbind(m1, m2, m3, m4, m5) %>% 
+  select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+
+Model_Comp %>% 
+  mutate(
+    test_error = 1 - accuracy
+  )
+```
+
+Model 1 has consistently had the best Roc.Auc and Accuracy out of all the other models. Model 1 has all the variables in it which might be why it works so well. So, Model 1 is preferred. 
+
+**Model 1 Roc.Auc is 80.14%**
+
+```{r}
+model_cv_knn1 %>% 
+  collect_predictions() %>% 
+  conf_mat(output, .pred_class)
+```
+
+```{r}
+set.seed(48378)
+
+ha_split <- initial_split(ha, prop = 3/4)
+
+ha_train <- training(ha_split)
+ha_test <- testing(ha_split)
+```
+
+
+```{r}
+model_fit_knn <- ha_wflow_knn1 %>% 
+  fit(ha_train)
+
+wflow_fit_knn1 <- model_fit_knn %>% extract_fit_parsnip()
+wflow_fit_knn1$fit %>% summary()
+```
+The Minimal Misclassification is almost the same as Model 1 Test Error above. 
+
+
+## Q2: Logistic Regression
+```{r}
+log_reg_spec <- logistic_reg() %>%
+  set_mode("classification") %>%
+  set_engine("glm")
+
+ha_rec1 <- recipe(output ~ age + sex + cp + trtbps + chol + restecg + thalach, data = ha) %>% 
+  step_dummy(cp, restecg)
+
+ha_wflow_log1 <- workflow() %>% 
+  add_model(log_reg_spec) %>% 
+  add_recipe(ha_rec1)
+```
+
+```{r}
+ha_rec2 <- recipe(output ~ sex + cp + trtbps + chol+ thalach, data = ha) %>% 
+  step_dummy(cp) #all significant variables
+
+ha_wflow_log2 <- workflow() %>% 
+  add_model(log_reg_spec) %>% 
+  add_recipe(ha_rec2)
+```
+
+```{r}
+ha_rec3 <- recipe(output ~ sex + cp + thalach, data = ha) %>% 
+  step_dummy(cp) #very significant variables 
+
+ha_wflow_log3 <- workflow() %>% 
+  add_model(log_reg_spec) %>% 
+  add_recipe(ha_rec3)
+```
+
+```{r}
+ha_rec4 <- recipe(output ~ cp + trtbps + chol + restecg + thalach, data = ha) %>% 
+  step_dummy(cp) #health variables 
+
+ha_wflow_log4 <- workflow() %>% 
+  add_model(log_reg_spec) %>% 
+  add_recipe(ha_rec4)
+```
+
+```{r}
+ha_rec5 <- recipe(output ~ sex + age + cp + trtbps + chol+ thalach, data = ha) %>% 
+  step_dummy(cp)
+
+ha_wflow_log5 <- workflow() %>% 
+  add_model(log_reg_spec) %>% 
+  add_recipe(ha_rec5)
+```
+
+
+```{r}
+set.seed(48378)
+ha_cvs_5 <- vfold_cv(ha, v = 5)
+
+model_cv <- log_reg_spec %>% 
+  fit_resamples(ha_rec1, resamples = ha_cvs_5, control = control_resamples(save_pred = TRUE)) 
+#https://stackoverflow.com/questions/66759453/tidymodels-classify-as-true-only-if-the-probability-is-75-or-higher
+model_cv2 <- log_reg_spec %>% 
+  fit_resamples(ha_rec2, resamples = ha_cvs_5, control = control_resamples(save_pred = TRUE))
+
+model_cv3 <- log_reg_spec %>% 
+  fit_resamples(ha_rec3, resamples = ha_cvs_5, control = control_resamples(save_pred = TRUE))
+  
+model_cv4 <- log_reg_spec %>% 
+  fit_resamples(ha_rec4, resamples = ha_cvs_5, control = control_resamples(save_pred = TRUE))
+
+model_cv5 <- log_reg_spec %>% 
+  fit_resamples(ha_rec5, resamples = ha_cvs_5, control = control_resamples(save_pred = TRUE))
+
+m1 <- model_cv %>% collect_metrics() %>% mutate(Model="Model 1", .before=.metric)
+m2 <- model_cv2 %>% collect_metrics() %>% mutate(Model="Model 2", .before=.metric)
+m3 <- model_cv3 %>% collect_metrics() %>% mutate(Model="Model 3", .before=.metric)
+m4 <- model_cv4 %>% collect_metrics() %>% mutate(Model="Model 4", .before=.metric)
+m5 <- model_cv5 %>% collect_metrics() %>% mutate(Model="Model 5", .before=.metric)
+```
+
+```{r}
+Model_Comp <- rbind(m1, m2, m3, m4, m5) %>% 
+  select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+
+Model_Comp %>% 
+  mutate(
+    test_error = 1 - accuracy
+  )
+```
+
+Model 2 and Model 5 have the best results out of all the models. I have run this many times and it seems that depending on how the data is cross validated, determines which model is better. 
+Model 2 includes all the significant variables in the dataset, while Model 5 is the same as Model 2 just with the addition of the age variable. 
+Model 5 has consistently had the higher Roc_Auc rating compared to the other models, but only usually by about 0.002. Model 2 usually has the higher accuracy, but only by about 1%. Since we are instructed to use roc.auc, we will say Model 5 is preferred. 
+
+**Model 5 Roc.Auc is 86.87%**
+
+
+```{r}
+model_cv5 %>% 
+  collect_predictions() %>% 
+  conf_mat(output, .pred_class)
+```
+```{r}
+model_fit_log <- ha_wflow_log5 %>% 
+  fit(ha_train)
+
+wflow_fit_log1 <- model_fit_log %>% extract_fit_parsnip()
+wflow_fit_log1$fit %>% summary()
+```
+
+- If the patient is male, there is a negative effect on the outcome of being at risk for a heart attack. Patient sex is a statistically significant variable for predicting outcome. 
+- For every year increase in age, there is a slight negative effect on the outcome of being at risk for a heart attack.
+- For every mm Hg increase in the patient's resting blood pressure, there is a slight negative effect on the outcome of being at risk for a heart attack.
+- For every mg/dl increase in the patient's cholesterol, there is a very slight negative effect on the outcome of being at risk for a heart attack.
+- For every increase in the patient's maximum heart rate achieved during exercise, there is a slight positive effect on the outcome of being at risk for a heart attack. This is a statistically significant variable for predicting outcome. 
+- Depending on what kind of chest pain a patient is having, there is a positive effect on the outcome of being at risk for a heart attack. This is a statistically significant variable for predicting outcome. 
+
+### Q3: Interpretation
+Which predictors were most important to predicting heart attack risk?
+
+For KNN Model 1 used all the variables in the dataset, while for Logistic Regression Model 5 had all the variables except restecg. 
+However, from looking at the Model 5 summary above, I would have to say that the most important variables are the patients Sex, thalach (maximum heart rate achieved during exercise), and cp (Chest Pain type). These were the most significant predictors in the analysis. 
+
+### Q4: ROC Curve
+Plot the ROC Curve for your two models above.
+
+#### KNN
+```{r}
+model1_prob <- ha_test %>% 
+  bind_cols(
+  predict(model_fit_knn, ha_test),
+  predict(model_fit_knn, ha_test, type = "prob")
+)
+
+model1_prob %>% 
+  roc_curve(truth = output, .pred_0) %>% 
+  autoplot()
+```
+
+#### Logistic Regression
+```{r}
+model5_prob <- ha_test %>% bind_cols(
+  predict(model_fit_log, ha_test),
+  predict(model_fit_log, ha_test, type = "prob")
+)
+
+model5_prob %>% 
+  roc_curve(truth = output, .pred_0) %>% 
+  autoplot()
+```
+
+
+# Part Two: Metrics
+## KNN
+```{r}
+ha_wflow_knn1 %>% 
+  fit_resamples(ha_cvs_5, metrics = metric_set(sensitivity, precision, specificity)) %>% 
+  collect_metrics()
+```
+For the KNN model 
+
+- Precision was 73.71%
+- Sensitivity was 70.95%
+- Specificity was 77.31%.
+
+## Logistic Regression
+```{r}
+ha_wflow_log5 %>% 
+  fit_resamples(ha_cvs_5, metrics = metric_set(sensitivity, precision, specificity)) %>% 
+  collect_metrics()
+```
+
+For the Logistic Regression model:
+
+- Precision was 78.62% 
+- Sensitivity was 71.67% 
+- Specificity was 83.04%.
+
+Comparison
+
+- The Logistic Regression Model has the higher Precision
+- The Logistic Regression Model has the higher Sensitivity
+- The Logistic Regression Model has the higher Specificity
+Overall, the Logistic Regression Model performed better than the KNN model. 
+
+# Part Three: Discussion
+#### The following questions give a possible scenario for why the hospital is interested in these models. For each one, discuss:
+
+- Which metric(s) you would use for model selection and why.
+- Which of your final models (Part One Q1-4) you would recommend to the hospital, and why.
+- What score you should expect for your chosen metric(s) using your chosen model to predict future observations.
+
+## Q1
+The hospital faces severe lawsuits if they deem a patient to be low risk, and that patient later experiences a heart attack.
+
+- Sensitivity. This is because we want to find the model that correctly predicts the most at risk patients. We want the model to find the most relevant cases so we can get those patients the help they need. 
+- The Logistic Regression Model has the higher Sensitivity, so it should be used. 
+- The Logistic Regression Model Sensitivity metric is 71.67%, so it should be able to correctly predict 7/10 at risk patients. 
+
+## Q2
+The hospital is overfull, and wants to only use bed space for patients most in need of monitoring due to heart attack risk.
+
+- Precision. This is because we want to the model that has the highest proportion of positive identifications that are actually correct. This way hospital space is not wasted on those who are not at risk. 
+- The Logistic Regression Model has the higher Precision, so it should be used. 
+- The Logistic Regression Model Precision metric is 78.62%. This means almost 8/10 positive identifications will be correct. 
+
+## Q3 
+The hospital is studying root causes of heart attacks, and would like to understand which biological measures are associated with heart attack risk.
+
+- Sensitivity. We want a model that can correctly predict the most at risk patients. This way they can understand which biological measures are associated with being at risk. 
+- The Logistic Regression Model has the higher Sensitivity, so it should be used. 
+- The Logistic Regression Model Sensitivity metric is 71.67%, so it should be able to correctly predict 7/10 at risk patients.
+
+## Q4
+The hospital is training a new batch of doctors, and they would like to compare the diagnoses of these doctors to the predictions given by the algorithm to measure the ability of new doctors to diagnose patients.
+
+- Sensitivity. We want a model that can correctly predict the most at risk patients. This way doctors can know what to look for in patients. 
+- The Logistic Regression Model has the higher Sensitivity, so it should be used. 
+- The Logistic Regression Model Sensitivity metric is 71.67%, so it should be able to correctly predict 7/10 at risk patients. 
+
+
+# Part Four: Validation
+```{r, message =FALSE}
+library(caret)
+
+ha_validation <- read_csv("https://www.dropbox.com/s/jkwqdiyx6o6oad0/heart_attack_validation.csv?dl=1")
+
+ha_validation <- ha_validation %>% 
+  mutate(
+    sex = factor(as.character(sex)),
+    cp = factor(as.character(cp)),
+    restecg = factor(as.character(restecg)),
+    output = factor(as.character(output))
+  )
+```
+
+```{r}
+model1_prob <- ha_validation %>% bind_cols(
+  predict(model_fit_knn, ha_validation),
+  predict(model_fit_knn, ha_validation, type = "prob")
+)
+
+confusionMatrix(model1_prob$.pred_class, model1_prob$output, positive = '1')
+```
+For the KNN model 
+
+- Precision was 73.71%
+- Precision is now 81.25%
+
+This is a 7.54% difference. This is over a 5% difference, so it is not considered correct. 
+
+- Sensitivity was 70.95%
+- Sensitivity is now 68.42%
+
+This is only 2.53% off. This is within 5% of the original value so it is considered correct. 
+
+- Specificity was 77.31%
+- Specificity is now 72.73%
+
+This is -4.58% difference. The score went down, but this difference is less than 5%, therefore it is correct.
+
+```{r}
+model1_prob %>% 
+  roc_auc(truth = output, .pred_0)
+```
+
+- Model 1 Roc.Auc is 80.14%
+- It is now 79.90%
+
+This is only -0.24% difference. This is less than a 1% difference, so it is very correct. 
+
+
+```{r}
+model5_prob <- ha_validation %>% bind_cols(
+  predict(model_fit_log, ha_validation),
+  predict(model_fit_log, ha_validation, type = "prob")
+)
+
+confusionMatrix(model5_prob$.pred_class, model5_prob$output, positive = '1')
+```
+
+For the Logistic Regression Model 
+
+- Precision was 78.62%
+- Precision is now 82.35%
+
+This is only a 3.73% difference. This is within 5% of the original value so it is considered correct. 
+
+- Sensitivity was 71.67%
+- Sensitivity is now 73.68%
+
+This is only a 2.01% difference. This is within 5% of the original value so it is considered correct. 
+
+- Specificity was 83.04%
+- Specificity is now 72.73%
+
+This is a -10.31 difference. This is over a 10% difference, so it is very wrong. 
+
+```{r}
+model5_prob %>% 
+  roc_auc(truth = output, .pred_0)
+```
+
+- Model 5 Roc.Auc was 86.87%
+- It is now about 89%
+
+This is a 2.125% difference. Since it is within a 5% difference it is correct.
+

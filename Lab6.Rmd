@@ -1,0 +1,504 @@
+---
+title: "Lab6"
+author: "Nick Bias"
+date: "11/4/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(here)
+library(tidymodels)
+options(scipen=99)
+```
+
+# Part One: Data Exploration
+### 1. Read in the dataset, and display some summaries of the data.
+```{r}
+health <- read.csv("https://www.dropbox.com/s/bocjjyo1ehr5auz/insurance_costs_1.csv?dl=1")
+summary(health)
+```
+
+### 2. Fix any concerns you have about the data.
+```{r}
+health <- health %>% 
+  mutate(
+    sex = factor(sex),
+    region = factor(region),
+    smoker = factor(smoker)
+  )
+```
+
+### 3. Make up to three plots comparing the response variable (charges) to one of the predictor variables. Briefly discuss each plot.
+```{r}
+health %>% 
+  ggplot(aes(x=age, y=charges)) +
+  geom_point()
+```
+
+There appears to be 3 trend lines in this plot. We can see there is one well defined line at the bottom, that may show the average beneficiary. Overall, we can see that the older one gets, the more expensive their charges are. These other two lines may be due to health concerns that the beneficiary has. Maybe they are smokers or had an accident in the past that caused their charges to be so high. 
+
+```{r}
+health %>% 
+  ggplot(aes(x=bmi, y=charges)) +
+  geom_point()
+```
+
+There seems to be an upward trend in this plot, showing that the higher ones BMI is, the more expensive their charges are. We can also again see that there is a bottom trend line, which may be the beneficiaries that are not smokers and at less of a risk, then the ones that appear higher on the plot. 
+
+```{r}
+health %>% 
+  ggplot(aes(x=sex, y=charges, fill=sex)) +
+  geom_boxplot()
+```
+
+Overall, we can see that each gender pays the same charges on average. They both have outliers, but this may be due to other health concerns like smoking. 
+
+```{r}
+health %>% 
+  ggplot(aes(x=smoker, y=charges, fill=smoker)) +
+  geom_boxplot()
+```
+
+We can see here that smokers have on average, twice as high charges than non-smokers do. This is due to them have higher health risks than other patients. 
+
+
+# Part Two: Simple Linear Models
+### 1. Construct a simple linear model to predict the insurance charges from the beneficiary’s age. Discuss the model fit, and interpret the coefficient estimates.
+
+```{r, message=FALSE, warning=FALSE}
+lin_mod_spec <- linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+
+health_rec_age <- 
+  recipe(charges ~ age, data = health)
+
+health_wflow <- workflow() %>% 
+  add_model(lin_mod_spec) %>% 
+  add_recipe(health_rec_age)
+
+model_fit <- health_wflow %>% 
+  fit(health)
+
+wflow_fit <- model_fit %>% pull_workflow_fit() 
+wflow_fit$fit %>% summary()
+```
+- The R^2 for the model is about 10%, meaning that it does not fit the data very well. 
+- When the individuals age is 0, on average their charges are $3611.76. 
+- For every 1 year increase in the individuals Age, their charges increase by $228.80. Age is a significant variable for predicting charges, as it has a P-value less than 0.05. 
+
+### 2. Make a model that also incorporates the variable sex. Report your results.
+```{r, message=FALSE, warning=FALSE}
+health_rec_age_sex <- 
+  recipe(charges ~ age + sex, data = health)
+
+health_wflow2 <- workflow() %>% 
+  add_model(lin_mod_spec) %>% 
+  add_recipe(health_rec_age_sex)
+
+model_fit2 <- health_wflow2 %>% 
+  fit(health)
+
+wflow_fit2 <- model_fit2 %>% pull_workflow_fit() 
+wflow_fit2$fit %>% summary()
+```
+- Once again the R^2 is about 10%, so this model also does not fit the data very well.
+- The age coefficient is almost the same as above, it is just $0.37 lower. So for every 1 year increase in the individuals Age, their charges increase by $228.43. Age is again a significant variable for predicting charges, as it has a P-value less than 0.05. 
+- When the individuals sex is Male, they pay $649.83 more than female individuals. This is not a significant variable for predicting charges, as it has a P-value greater than 0.05.
+
+### 3. Now make a model that does not include sex, but does include smoker. Report your results.
+```{r, message=FALSE, warning=FALSE}
+health_rec_age_smoker <- 
+  recipe(charges ~ age + smoker, data = health)
+
+health_wflow3 <- workflow() %>% 
+  add_model(lin_mod_spec) %>% 
+  add_recipe(health_rec_age_smoker)
+
+model_fit3 <- health_wflow3 %>% 
+  fit(health)
+
+wflow_fit3 <- model_fit3 %>% pull_workflow_fit() 
+wflow_fit3$fit %>% summary()
+```
+- The R^2 for this model is 76.04%, meaning that this model fits the data much better than the previous two. This means that age and if they smoke are able to explain 76.04% of the variation in the charges.
+- The age coefficient is larger than it was above. So for every 1 year increase in the individuals Age, their charges increase by $253.15. Age is again a significant variable for predicting charges, as it has a P-value less than 0.05. 
+- If the individual is a smoker, than their charges increase by $24048.87. This may be due to smoking individuals being at a higher health risk than those that do not. This is also a significant variable for predicting charges, as it has a P-value less than 0.05. 
+
+### 4. Which model (Q2 or Q3) do you think better fits the data? Justify your answer by calculating the MSE for each model, and also by comparing R-squared values.
+```{r}
+mean((summary(wflow_fit2$fit))$residuals^2)
+```
+```{r}
+mean((summary(wflow_fit3$fit))$residuals^2)
+```
+- The MSE values are very large for both models. Model Q2 has a MSE of 126633940, while Model Q3 has a MSE of 33719831. Model Q3 has the smaller MSE, meaning that it fits the data the best. 
+- For Model Q2, the R^2 value is about 10%, while for Model Q3, the R^2 value is 76.04% (These can be seen in the model summaries above). This means that Model Q3 is able to explain the variation in the charges more than Model Q2. So, Model Q3 fits the data better. 
+- From this analysis we can say that Model Q3 is preferred. 
+
+
+# Part Three: Multiple Linear Models
+
+### 1. Fit a model that uses age and bmi as predictors. (Do not include an interaction term between these two.) Report your results. How does the MSE compare to the model in Part Two Q1? How does the Adjusted R-squared compare?
+```{r, message=FALSE, warning=FALSE}
+health_rec_age_bmi <- 
+  recipe(charges ~ age + bmi, data = health)
+
+health_wflow4 <- workflow() %>% 
+  add_model(lin_mod_spec) %>% 
+  add_recipe(health_rec_age_bmi)
+
+model_fit4 <- health_wflow4 %>% 
+  fit(health)
+
+wflow_fit4 <- model_fit4 %>% pull_workflow_fit() 
+wflow_fit4$fit %>% summary()
+```
+- The R^2 value is 12.03%. This is much lower than the previous model, but larger than the first 2. This means that age and BMI are able to explain 12.03% of the variation in the charges.
+- The age coefficient is smaller than it was above. So for every 1 year increase in the individuals Age, their charges increase by $216.30. Age is again a significant variable for predicting charges, as it has a P-value less than 0.05. 
+- For every increase in the individual's BMI, their charges increase by $283.20. BMI is a significant variable for predicting charges, as it has a P-value less than 0.05. 
+
+```{r}
+mean((summary(wflow_fit4$fit))$residuals^2)
+```
+```{r}
+mean((summary(wflow_fit$fit))$residuals^2)
+```
+- Model 4 has a lower MSE than Model 1, meaning that it fits the data the best. 
+- The adjusted R^2 for Model 1 is 9.728%, while for Model 4 it is 11.62%. Model 4 has the higher adjusted R^2, meaning that Model 4 is explaining the variation is charges better. 
+
+### 2. Perhaps the relationships are not linear. Fit a model that uses age and age^2 as predictors. How do the MSE and R-squared compare to the model in P2 Q1?
+```{r, message=FALSE, warning=FALSE}
+health_rec_age2 <- 
+  recipe(charges ~ age, data = health) %>% 
+  step_poly(age, degree = 2)
+
+health_wflow5 <- workflow() %>% 
+  add_model(lin_mod_spec) %>% 
+  add_recipe(health_rec_age2)
+
+model_fit5 <- health_wflow5 %>% 
+  fit(health)
+
+wflow_fit5 <- model_fit5 %>% pull_workflow_fit() 
+wflow_fit5$fit %>% summary()
+```
+- Model 5 R^2 is 9.959%, while Model 1 R^2 is 9.728%. Model 5 has the higher R^2 value, but not by much. It only explains 0.231% more than Model 1. 
+- Model 5 adjusted R^2 is 9.538%, while Model 1 adjusted R^2 is 9.728%. Model 1 has the higher adjusted R^2. 
+
+```{r}
+mean((summary(wflow_fit5$fit))$residuals^2)
+```
+```{r}
+mean((summary(wflow_fit$fit))$residuals^2)
+```
+- Model 5 has the lower MSE, meaning it fits the data better. 
+
+### 3. Fit a polynomial model of degree 4. How do the MSE and R-squared compare to the model in P2 Q1?
+```{r, message=FALSE, warning=FALSE}
+health_rec_age4 <- 
+  recipe(charges ~ age, data = health) %>% 
+  step_poly(age, degree = 4)
+
+health_wflow6 <- workflow() %>% 
+  add_model(lin_mod_spec) %>% 
+  add_recipe(health_rec_age4)
+
+model_fit6 <- health_wflow6 %>% 
+  fit(health)
+
+wflow_fit6 <- model_fit6 %>% pull_workflow_fit() 
+wflow_fit6$fit %>% summary()
+```
+- Model 6 R^2 is 10.78%, while Model 1 R^2 is 9.728%. Model 6 has the higher R^2 value, but not by much. It only explains 1.052% more than Model 1. 
+- Model 6 adjusted R^2 is 9.945%, while Model 1 adjusted R^2 is 9.728%. Model 6 has the higher adjusted R^2, but again not by much. 
+
+```{r}
+mean((summary(wflow_fit6$fit))$residuals^2)
+```
+```{r}
+mean((summary(wflow_fit$fit))$residuals^2)
+```
+- Model 6 has the lower MSE, meaning it fits the data better. 
+
+### 4. Fit a polynomial model of degree 12. How do the MSE and R-squared compare to the model in P2 Q1?
+```{r, message=FALSE, warning=FALSE}
+health_rec_age12 <- 
+  recipe(charges ~ age, data = health) %>% 
+  step_poly(age, degree = 12)
+
+health_wflow7 <- workflow() %>% 
+  add_model(lin_mod_spec) %>% 
+  add_recipe(health_rec_age12)
+
+model_fit7 <- health_wflow7 %>% 
+  fit(health)
+
+wflow_fit7 <- model_fit7 %>% pull_workflow_fit() 
+wflow_fit7$fit %>% summary()
+```
+- Model 7 R^2 is 11.95%, while Model 1 R^2 is 9.728%. Model 7 has the higher R^2 value, but not by much. It only explains 2.222% more than Model 1. 
+- Model 6 adjusted R^2 is 9.42%, while Model 1 adjusted R^2 is 9.728%. Model 1 has the higher adjusted R^2, but again not by much. 
+
+```{r}
+mean((summary(wflow_fit7$fit))$residuals^2)
+```
+```{r}
+mean((summary(wflow_fit$fit))$residuals^2)
+```
+- Model 7 has the lower MSE, meaning it fits the data better. 
+
+### 5. According to the MSE and R-squared, which is the best model? Do you agree that this is indeed the “best” model? Why or why not?
+**Model 1**
+```{r}
+#Adjusted R^2
+summary(wflow_fit$fit)$adj.r.square
+#MSE
+mean((summary(wflow_fit$fit))$residuals^2)
+```
+**Model 2**
+```{r}
+#Adjusted R^2
+summary(wflow_fit2$fit)$adj.r.square
+#MSE
+mean((summary(wflow_fit2$fit))$residuals^2)
+```
+**Model 3**
+```{r}
+#Adjusted R^2
+summary(wflow_fit3$fit)$adj.r.square
+#MSE
+mean((summary(wflow_fit3$fit))$residuals^2)
+```
+**Model 4**
+```{r}
+#Adjusted R^2
+summary(wflow_fit4$fit)$adj.r.square
+#MSE
+mean((summary(wflow_fit4$fit))$residuals^2)
+
+```
+**Model 5**
+```{r}
+#Adjusted R^2
+summary(wflow_fit5$fit)$adj.r.square
+#MSE
+mean((summary(wflow_fit5$fit))$residuals^2)
+```
+**Model 6**
+```{r}
+#Adjusted R^2
+summary(wflow_fit6$fit)$adj.r.square
+#MSE
+mean((summary(wflow_fit6$fit))$residuals^2)
+```
+**Model 7**
+```{r}
+#Adjusted R^2
+summary(wflow_fit7$fit)$adj.r.square
+#MSE
+mean((summary(wflow_fit7$fit))$residuals^2)
+```
+- Out of all the models, Model 3 (P2 Q3) is the overall best model as it has the highest adjusted R^2 by more than 60% compared to the other models. It also has the lowest MSE compared the other models by being almost 90,000,000 less than the other models. This may be due to the fact that it includes the Smoker variable. 
+- Out of the Models in Part 3, Model 4 (P3 Q1) is the best. It has the highest Adjusted R^2 and lowest MSE compared to the other models in Part 3. This may be due to the fact that it includes the BMI variable. 
+
+### 6. Plot the predictions from your model in Q4 as a line plot on top of the scatterplot of your original data.
+```{r}
+health %>% 
+  ggplot(aes(x=age, y=charges))+
+  geom_point() +
+  geom_smooth(color="Red", method=lm, se=FALSE, formula = y ~ poly(x, 12))
+```
+
+
+# Part Four: New data
+
+### 1. For each model, fit the model on the original data.
+**Age**
+```{r}
+health_rec_age <- 
+  recipe(charges ~ age, data = health)
+
+health_wflow <- workflow() %>% 
+  add_model(lin_mod_spec) %>% 
+  add_recipe(health_rec_age)
+
+model_fit <- health_wflow %>% 
+  fit(health)
+
+wflow_fit <- model_fit %>% pull_workflow_fit() 
+wflow_fit$fit %>% summary()
+```
+**Age and BMI**
+```{r, message=FALSE, warning=FALSE}
+health_rec_age_bmi <- 
+  recipe(charges ~ age + bmi, data = health)
+
+health_wflow2 <- workflow() %>% 
+  add_model(lin_mod_spec) %>% 
+  add_recipe(health_rec_age_bmi)
+
+model_fit2 <- health_wflow2 %>% 
+  fit(health)
+
+wflow_fit2 <- model_fit2 %>% pull_workflow_fit() 
+wflow_fit2$fit %>% summary()
+```
+**Age, BMI, and Smoker**
+```{r, message=FALSE, warning=FALSE}
+health_rec_age_bmi_smoke <- 
+  recipe(charges ~ age + bmi + smoker, data = health)
+
+health_wflow3 <- workflow() %>% 
+  add_model(lin_mod_spec) %>% 
+  add_recipe(health_rec_age_bmi_smoke)
+
+model_fit3_1 <- health_wflow3 %>% 
+  fit(health)
+
+wflow_fit3 <- model_fit3_1 %>% pull_workflow_fit() 
+wflow_fit3$fit %>% summary()
+```
+**Age, and BMI, with both quantitative variables having an interaction term with Smoker**
+```{r, message=FALSE, warning=FALSE}
+#https://recipes.tidymodels.org/reference/step_interact.html
+
+health_rec_age_bmi_smoke2 <- 
+  recipe(charges ~ age + bmi + smoker, data = health) %>% 
+  step_interact(terms = ~(age + bmi):smoker) %>% 
+  step_rm(smoker)
+
+health_wflow4 <- workflow() %>% 
+  add_model(lin_mod_spec) %>% 
+  add_recipe(health_rec_age_bmi_smoke2)
+
+model_fit4_1 <- health_wflow4 %>% 
+  fit(health)
+
+wflow_fit4 <- model_fit4_1 %>% pull_workflow_fit() 
+wflow_fit4$fit %>% summary()
+```
+**Age, BMI, and Smokers predictors, with both quantitative variables having an interaction term with Smoker**
+```{r, message=FALSE, warning=FALSE}
+health_rec_age_bmi_smoke3 <- 
+  recipe(charges ~ age + bmi + smoker, data = health) %>% 
+  step_interact(terms = ~(age + bmi)*smoker) 
+
+health_wflow5 <- workflow() %>% 
+  add_model(lin_mod_spec) %>% 
+  add_recipe(health_rec_age_bmi_smoke3)
+
+model_fit5_1 <- health_wflow5 %>% 
+  fit(health)
+
+wflow_fit5 <- model_fit5_1 %>% pull_workflow_fit() 
+wflow_fit5$fit %>% summary()
+```
+
+### 2. Then, use the fitted model to predict on the new data.
+```{r}
+newData <- read.csv("https://www.dropbox.com/s/sky86agc4s8c6qe/insurance_costs_2.csv?dl=1")
+```
+
+**Model 1**
+```{r}
+#predicting values with model, with new data
+prediction <- predict(model_fit, newData)
+#finding residuals in model
+residuals <- prediction - newData$charges
+#MSE
+mean((residuals$.pred)^2)
+```
+**Model 2**
+```{r}
+#predicting values with model, with new data
+prediction2 <- predict(model_fit2, newData)
+#finding residuals in model
+residuals2 <- prediction2 - newData$charges
+#MSE
+mean((residuals2$.pred)^2)
+```
+**Model 3**
+```{r}
+#predicting values with model, with new data
+prediction3 <- predict(model_fit3_1, newData)
+#finding residuals in model
+residuals3 <- prediction3 - newData$charges
+#MSE
+mean((residuals3$.pred)^2)
+```
+**Model 4**
+```{r}
+#predicting values with model, with new data
+prediction4 <- predict(model_fit4_1, newData)
+#finding residuals in model
+residuals4 <- prediction4 - newData$charges
+#MSE
+mean((residuals4$.pred)^2)
+```
+**Model 5**
+```{r}
+#predicting values with model, with new data
+prediction5 <- predict(model_fit5_1, newData)
+#finding residuals in model
+residuals5 <- prediction5 - newData$charges
+#MSE
+mean((residuals5$.pred)^2)
+```
+### Report the MSE for each model’s new predictions. Based on this, which is the best model to use?
+- Model 1: 136077137
+- Model 2: 132636406
+- Model 3: 35377541
+- Model 4: 24795908
+- Model 5: 21786257
+
+Model 5 has the lowest MSE, meaning it is the best model to use. 
+
+### 3. Use 5-fold cross-validation to compare the models above instead of the single train/test split method you used in the previous part. Are your conclusions the same?
+```{r}
+data <- rbind(health, newData)
+health_cvs_5 <- vfold_cv(data, v = 5)
+```
+
+```{r, message=FALSE}
+model_cv1 <- lin_mod_spec %>% 
+  fit_resamples(health_rec_age, resamples = health_cvs_5)
+
+model_cv2 <- lin_mod_spec %>% 
+  fit_resamples(health_rec_age_bmi, resamples = health_cvs_5)
+
+model_cv3 <- lin_mod_spec %>% 
+  fit_resamples(health_rec_age_bmi_smoke, resamples = health_cvs_5)
+
+model_cv4 <- lin_mod_spec %>% 
+  fit_resamples(health_rec_age_bmi_smoke2, resamples = health_cvs_5)
+
+model_cv5 <- lin_mod_spec %>% 
+  fit_resamples(health_rec_age_bmi_smoke3, resamples = health_cvs_5)
+```
+
+
+```{r}
+m1 <- model_cv1 %>% collect_metrics() %>% mutate(Model="Model 1", .before=.metric)
+m2 <- model_cv2 %>% collect_metrics() %>% mutate(Model="Model 2", .before=.metric)
+m3 <- model_cv3 %>% collect_metrics() %>% mutate(Model="Model 3", .before=.metric)
+m4 <- model_cv4 %>% collect_metrics() %>% mutate(Model="Model 4", .before=.metric)
+m5 <- model_cv5 %>% collect_metrics() %>% mutate(Model="Model 5", .before=.metric)
+
+rbind(m1, m2, m3, m4, m5) %>% 
+  select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+```
+
+Model 5 has the lowest RMSE and the highest R^2. Because of this, Model 5 is the best model at predicting charges. This is the same conclusion from Question 2

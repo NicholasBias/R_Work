@@ -1,0 +1,306 @@
+---
+title: "Lab8"
+author: "Nick Bias"
+date: "11/24/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message = FALSE}
+library(tidyverse)
+library(tidymodels)
+library(discrim)
+options(scipen=99)
+```
+### Import Data
+```{r, message = FALSE}
+zoo <- read_csv("https://www.dropbox.com/s/kg89g2y3tp6p9yh/zoo_final.csv?dl=1")
+zoo <- zoo %>% 
+  mutate(
+    Class_Type = factor(Class_Type)
+  )
+```
+
+# Part One: PCA preprocessing
+### Q1: PCA
+```{r}
+zoo_matrix <- zoo %>% select(-Class_Type, -animal_name) %>% as.matrix()
+pc <- prcomp(zoo_matrix, center = TRUE, scale = TRUE)
+```
+##### PC1
+The values indicate that PC1 increases as feathers, eggs, aquatic, predator, toothed, backbone, fins, and tail increase. Whereas, as PC1 increases, hair, milk, airborne, breathes, venomous, legs, domestic and catsize decrease, due to negative correlation.
+The highest values for correlation for PC1 are fins, aquatic, backbone, tail and eggs. These all have values above 0.05. While the lowest values are legs, hair, breathes and milk. These variables would be the most important in spreading the observations. 
+**PC1 seems to represent aquatic or fish like animals**. 
+
+##### PC2
+The values indicate that PC2 increases as hair, milk, predator, toothed, backbone, breathes, fins, tail, domestic and catsize increase. Whereas, as PC2 increases, feathers, eggs, airborne, aquatic, venomous, and legs decrease. 
+The highest values for correlation for PC2 are hair, milk, toothed, backbone, breathes, tail and catsize. These all have values above 0.05. While the lowest values are feathers, eggs, airborne, and aquatic. These variables would be the most important in spreading the observations. 
+**PC2 seems to represent Mammals**. 
+
+##### PC3
+The values indicate that PC3 increases as eggs, aquatic, predator, toothed, venomous, fins, legs, and catsize. Whereas, as PC3 increases, hair, feathers, milk, airborne, backbone, breathes, tail and domestic decrease. 
+The highest values for correlation for PC3 are aquatic, predator, toothed, venomous, fins, and legs. These all have values above 0.05. While the lowest values are feathers, airborne, backbone, breathes, tail and domestic. These variables would be the most important in spreading the observations. 
+**PC3 seems to represent Invertebrates**.
+
+
+### Q2: Choosing PCs
+Based on the variance explained by each PC, I would have to say that predictors with variance over 0.01 are the best. 
+This includes:
+
+- Hair
+- Feathers
+- Eggs
+- Milk
+- Airborne
+- Aquatic
+- Predator
+- Toothed
+- Backbone
+
+All these variances added together accounts for about 97% of the variance in the data. 
+
+### Q3: New dataset
+```{r}
+zoo_rec <- 
+  recipe(Class_Type ~ hair + feathers + eggs + milk + airborne + aquatic + predator + toothed + backbone + breathes+venomous+fins+legs+tail+domestic+catsize, data = zoo) %>% 
+  step_pca(all_numeric(), threshold = 0.8, 
+           options = c(center = TRUE))
+```
+
+```{r}
+zoo_trained <- zoo_rec %>% prep(zoo)
+zoo_pcs <- zoo_trained %>% bake(zoo)
+```
+
+### Q4: Explore
+```{r}
+zoo_pcs %>% 
+  ggplot(aes(x=PC1, y=PC2, color = Class_Type))+
+  geom_point()
+```
+
+- Mammals have high PC2 values and a range of PC1 values. THis makes sense as PC2 represents mammals 
+- Birds have low PC2 values and higher PC1 values. PC1 and 2 do not explain bird so maybe this is why they meet in the middle. 
+- Fish have around 0 PC2 and high PC1. This is due to PC1 representing aquatic animals or fish. 
+- Invertabrates have low PC2 and low PC1. This is due to the fact that invertabrates are not represented by PC1 or PC2. 
+
+```{r}
+zoo_pcs %>% 
+  ggplot(aes(x=PC2, y=PC3, color = Class_Type))+
+  geom_point()
+```
+
+- Birds low PC2 and PC3 values. Birds were not represented in PC2 or PC3
+- There are very few fish in this graph. They have around 0 PC2 and higher PC3 values. This may be due to the fact that some invertebrates are aquatic. 
+- Invertebrates have high PC3 and low PC2 values. This is due to the fact that PC3 represents invertebrates. 
+- Mammal have high PC2 values and lower PC3 values. This is due to PC2 representing mammals
+
+
+# Part Two: LDA
+```{r}
+set.seed(48378)
+zoo_cvs_5 <- vfold_cv(zoo, v = 5)
+
+zoo_rec2 <- recipe(Class_Type ~ ., data = zoo) %>% 
+  update_role(animal_name, new_role="id")
+```
+
+
+### Q1: Linear
+```{r}
+lda_mod <- discrim_linear() %>%
+  set_engine("MASS") %>% 
+  set_mode("classification")
+
+zoo_wflow_lda <- workflow() %>% 
+  add_model(lda_mod) %>% 
+  add_recipe(zoo_rec)
+
+model_cv_lda <- zoo_wflow_lda %>% 
+  fit_resamples(resamples = zoo_cvs_5, 
+                metrics = metric_set(accuracy, roc_auc, sensitivity, precision, specificity), 
+                control = control_resamples(save_pred = TRUE)) 
+
+lda <- model_cv_lda %>% collect_metrics() %>% mutate(Model="LDA", .before=.metric)
+lda
+```
+
+
+### Q2: Quadratic
+```{r}
+qda_mod <- discrim_regularized(frac_common_cov = 0) %>% 
+             set_engine('klaR') %>% 
+             set_mode('classification')
+
+zoo_wflow_qda <- workflow() %>% 
+  add_model(qda_mod) %>% 
+  add_recipe(zoo_rec)
+
+model_cv_qda <- zoo_wflow_qda %>% 
+  fit_resamples(resamples = zoo_cvs_5, 
+                metrics = metric_set(accuracy, roc_auc, sensitivity, precision, specificity),
+                control = control_resamples(save_pred = TRUE)) 
+
+qda <- model_cv_qda %>% collect_metrics() %>% mutate(Model="QDA", .before=.metric)
+qda
+```
+
+
+### Q3: Interpretation
+```{r}
+Model_lda_Comp <- rbind(lda, qda) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+Model_lda_Comp
+```
+
+The QDA model performed better in every single metric reported, therefore it is the better model. This may be due to the fact that the variables do not have a simple linear relationship. 
+
+
+# Part Three: SVM
+
+### Q1: Linear
+```{r}
+svm_spec_costtune <- svm_poly(cost = tune(), degree = 1) %>%
+  set_mode("classification") %>%
+  set_engine("kernlab")
+
+k_grid <- grid_regular(cost(),
+                       levels = 20)
+
+zoo_wflow_lin <- workflow() %>%
+  add_model(svm_spec_costtune) %>%
+  add_recipe(zoo_rec)
+
+knn_grid_search1 <-
+  tune_grid(
+    zoo_wflow_lin,
+    resamples = zoo_cvs_5,
+    grid = k_grid
+  )
+
+knn_grid_search1 %>% collect_metrics()
+```
+When cost is 2 it has one of the highest Accuracy of 88%. Its Roc_Auc of 89.96% is not the best but it is still high. 
+
+```{r}
+svm_spec_cost <- svm_poly(cost = 2, degree = 1) %>%
+  set_mode("classification") %>%
+  set_engine("kernlab")
+
+zoo_wflow_svc <- workflow() %>%
+  add_model(svm_spec_cost) %>%
+  add_recipe(zoo_rec)
+
+model_cv_svc <- zoo_wflow_svc %>% 
+  fit_resamples(resamples = zoo_cvs_5, 
+                metrics = metric_set(accuracy, roc_auc, sensitivity, precision, specificity),
+                control = control_resamples(save_pred = TRUE)) 
+
+svc <- model_cv_svc %>% collect_metrics() %>% mutate(Model="SVC", .before=.metric)
+svc
+```
+
+
+### Q2: SVM
+```{r}
+svm_spec_degreetune <- svm_poly(cost = 2, degree = tune()) %>%
+  set_mode("classification") %>%
+  set_engine("kernlab")
+
+k_grid <- grid_regular(degree())
+
+zoo_wflow_svm <- workflow() %>%
+  add_model(svm_spec_degreetune) %>%
+  add_recipe(zoo_rec)
+
+knn_grid_search2 <-
+  tune_grid(
+    zoo_wflow_svm,
+    resamples = zoo_cvs_5,
+    grid = k_grid
+  )
+
+knn_grid_search2 %>% collect_metrics()
+```
+When degree is 2, it has the highest Accuracy of 92% and the highest Roc_Auc of 96.14%.
+
+```{r}
+svm_spec_degree <- svm_poly(cost = 2, degree = 2) %>%
+  set_mode("classification") %>%
+  set_engine("kernlab")
+
+zoo_wflow_svm <- workflow() %>%
+  add_model(svm_spec_degree) %>%
+  add_recipe(zoo_rec)
+
+model_cv_svc <- zoo_wflow_svm %>% 
+  fit_resamples(resamples = zoo_cvs_5, 
+                metrics = metric_set(accuracy, roc_auc, sensitivity, precision, specificity),
+                control = control_resamples(save_pred = TRUE)) 
+
+svm <- model_cv_svc %>% collect_metrics() %>% mutate(Model="SVM", .before=.metric)
+svm
+```
+
+
+### Q3: Interpretation
+```{r}
+Model_sv_Comp <- rbind(svc, svm) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+Model_sv_Comp
+```
+SVM preformed better in all metrics reported. Once again this is due to the fact that the relationship between the variables is not linear, so that is why SVM outperforms SVC.
+
+
+# Part Four: Prediction
+```{r}
+human <- data.frame(
+  animal_name = "human",
+  hair = 1,
+  feathers = 0,
+  eggs = 0,
+  milk = 1, 
+  airborne = 0,
+  aquatic = 0,
+  predator = 1,
+  toothed = 1,
+  backbone = 1,
+  breathes = 1,
+  venomous = 0,
+  fins = 0,
+  legs = 2,
+  tail = 0,
+  domestic = 0,
+  catsize = 1
+)
+```
+
+```{r}
+qda_fit <- zoo_wflow_qda %>% 
+  fit(zoo)
+
+svm_fit <- zoo_wflow_svm %>% 
+  fit(zoo)
+```
+
+```{r}
+predict(qda_fit, human, type = 'prob')
+```
+It predicts that it is a mammal with a probability 99.99%. This is the highest probability for all the options. 
+
+```{r}
+predict(svm_fit, human, type = 'prob')
+```
+It predicts that it is a mammal with a probability 34.46%. This is the highest probability for all the options. 

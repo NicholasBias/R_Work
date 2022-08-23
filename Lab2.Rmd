@@ -1,0 +1,270 @@
+---
+title: "Lab2"
+author: "Nick Bias"
+date: "9/30/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo = TRUE}
+library(tidyverse)
+```
+
+# Summary
+
+### 1. Provide a brief overview (2-4 sentences) of the dataset.
+```{r, echo = TRUE}
+hiphop <- read.csv("hiphop.csv")
+summary(hiphop)
+```
+There are 38 variables in the dataset and many of them seem to have 0 values. For many variables the Min, 1st Quartile and Median are 0. There does not appear to be any negative values, which is a good sign. The dataset will need to be cleaned before it can further analyzed. There are many null values that should be changed to 0. 
+
+### 2. Clean the dataset in whichever ways you see fit. 
+```{r, echo = TRUE}
+hiphop[is.na(hiphop)] = 0
+
+hiphop <- hiphop %>% 
+  mutate(
+    word = factor(word),
+    subj = factor(subj),
+    sex = factor(sex),
+    ethnic = factor(ethnic)
+  ) 
+```
+
+### 3. How many unique AAVE words were studied in this dataset?
+```{r, echo = TRUE}
+hiphop %>% 
+  group_by(word) %>% 
+  summarize()
+```
+There are 64 AAVE words studied in the dataset.
+
+### 4. Make a new variable that recategorizes ethnic into only two groups, “white” and “non-white”, to simplify your data.
+```{r, echo = TRUE}
+hiphop$white_ethnic <- ifelse(hiphop$ethnic == "white", "white", "non-white")
+```
+
+### 5. What are the demographics of the people in this study?
+```{r, echo = TRUE}
+hiphop %>% 
+  group_by(subj) %>% 
+  select(subj, sex, age, ethnic) %>% 
+  unique() %>% 
+  summary()
+```
+
+Here we can see that 117 of the subjects were Female, while the rest (51) were males. The youngest person studied was 16, while the oldest was 48. The average age was 20. 135 subjects were white, while the rest came from different ethnicities. Asians make up the second largest group, but not by much.
+
+```{r, echo = TRUE}
+dem_hiphop <- hiphop %>% 
+  group_by(subj) %>% 
+  select(subj, sex, age, ethnic) %>% 
+  unique()
+```
+
+### 6. Make at least two plots to display the demographic information of the subjects in this study.
+```{r, echo = TRUE}
+dem_hiphop %>% 
+  ggplot(aes(x=ethnic, y= age, fill = sex)) +
+  geom_boxplot()
+```
+```{r, echo = TRUE}
+dem_hiphop %>% 
+  group_by(subj) %>% 
+  ggplot(aes(x=sex, fill=sex)) +
+  geom_bar()
+```
+```{r, echo = TRUE}
+dem_hiphop %>% 
+  ggplot(aes(age)) +
+  geom_histogram()
+```
+
+
+# Familiar words
+
+### 1. For each demographic group listed below, determine which word(s) in this study was the most and least familiar on average.
+#### a. People below the age of 20
+```{r, echo = TRUE}
+hiphop %>% 
+  filter(age < 20) %>% 
+  group_by(word) %>% 
+  summarise(avg_fam=mean(familiarity)) %>% 
+  arrange(desc(avg_fam))
+```
+"feel me" and "off the hook" were the most familiar on average with people younger than 20, while "catch the vapors" and "domino" were the least familar on average with people younger than 20. 
+
+#### b. Non-white women
+```{r, echo = TRUE}
+hiphop %>% 
+  filter(sex == "Female", ethnic != "white") %>% 
+  group_by(word) %>% 
+  summarise(avg_fam=mean(familiarity)) %>% 
+  arrange(desc(avg_fam))
+```
+"feel me" and "boo" were the most familiar on average with Non-white women, while "rollie" and "plex" were the least familiar on average with No-white women. 
+
+#### c. White men above the age of 30
+```{r, echo = TRUE}
+hiphop %>% 
+  filter(sex == "Male", ethnic == "white", age > 30) %>% 
+  group_by(word) %>% 
+  summarise(avg_fam=mean(familiarity)) %>% 
+  arrange(desc(avg_fam))
+```
+"5-0" and "feel me" were most familiar on average with White men older than 30, while "twurk" and "trill" were the least familiar on average with White men older than 30. 
+
+
+### 2. For each demographic comparison below, determine which music genre most differentiates the groups. That is, which genre had much higher average (mean or median) score in one group than the other.
+#### a. Male versus Female
+```{r, echo = TRUE}
+hiphop %>% 
+  group_by(sex) %>% 
+  summarise(avg_intl=mean(intl),
+            avg_vocal=mean(vocal),
+            avg_classical=mean(classical),
+            avg_folk=mean(folk),
+            avg_rock=mean(rock),
+            avg_country=mean(country),
+            avg_pop=mean(pop),
+            avg_alternative=mean(alternative),
+            avg_hiphop=mean(hiphop),
+            avg_unclassifiable=mean(unclassifiable)) %>% 
+  pivot_longer(avg_intl:avg_unclassifiable,
+               names_to = "Genre",
+               values_to = "Rating") %>% 
+  ggplot(aes(x=Genre, y=Rating, fill=sex)) +
+  geom_col(position = "dodge") +
+  scale_x_discrete(guide = guide_axis(angle=90))
+```
+
+Rock is the biggest difference between the two groups, with vocals being the second largest difference.
+
+#### b. White versus Non-White
+```{r, echo = TRUE}
+hiphop %>% 
+  group_by(white_ethnic) %>% 
+  summarise(avg_intl=mean(intl),
+            avg_vocal=mean(vocal),
+            avg_classical=mean(classical),
+            avg_folk=mean(folk),
+            avg_rock=mean(rock),
+            avg_country=mean(country),
+            avg_pop=mean(pop),
+            avg_alternative=mean(alternative),
+            avg_hiphop=mean(hiphop),
+            avg_unclassifiable=mean(unclassifiable)) %>% 
+  pivot_longer(avg_intl:avg_unclassifiable,
+               names_to = "Genre",
+               values_to = "Rating") %>% 
+  ggplot(aes(x=Genre, y=Rating, fill=white_ethnic)) +
+  geom_col(position = "dodge") +
+  scale_x_discrete(guide = guide_axis(angle=90))
+```
+
+Rock is again the biggest difference between the groups, with Alternative being a close second.
+
+#### c. Age below 21 versus age 21+
+```{r, echo = TRUE}
+hiphop$drinking_age <- ifelse(hiphop$age >= 21, "21+", "Under_21")
+
+hiphop %>% 
+  group_by(drinking_age) %>% 
+  summarise(avg_intl=mean(intl),
+            avg_vocal=mean(vocal),
+            avg_classical=mean(classical),
+            avg_folk=mean(folk),
+            avg_rock=mean(rock),
+            avg_country=mean(country),
+            avg_pop=mean(pop),
+            avg_alternative=mean(alternative),
+            avg_hiphop=mean(hiphop),
+            avg_unclassifiable=mean(unclassifiable)) %>% 
+  pivot_longer(avg_intl:avg_unclassifiable,
+               names_to = "Genre",
+               values_to = "Rating") %>% 
+  ggplot(aes(x=Genre, y=Rating, fill=drinking_age)) +
+  geom_col(position = "dodge") +
+  scale_x_discrete(guide = guide_axis(angle=90))
+```
+
+International has the biggest difference between the groups, while Hiphop and Alternative make a close second.  
+
+# Use the data
+
+hiphop %>% 
+  filter(sex == "Male", ethnic == "white", age > 30) %>% 
+  group_by(word) %>% 
+  summarise(avg_fam=mean(familiarity)) %>% 
+  arrange(avg_fam)
+
+### 1. 
+```{r, echo = TRUE}
+hiphop$hiphop_fans <- ifelse(hiphop$hiphop > 3, "Fan", "No_Fan")
+# 3 is the third quartile for hiphop variable, so fans are people who are in 4th quartile
+hiphop <- hiphop %>% 
+  mutate(
+    hiphop_fans = factor(hiphop_fans)
+  )
+
+FamFan <- hiphop %>% 
+  select(word, hiphop_fans, familiarity) %>%
+  filter(hiphop_fans == "Fan") %>% 
+  group_by(word) %>% 
+  summarise(avg_fam_fan=mean(familiarity))
+
+FamNotFan <- hiphop %>% 
+  select(word, hiphop_fans, familiarity) %>%
+  filter(hiphop_fans == "No_Fan") %>% 
+  group_by(word) %>% 
+  summarise(avg_fam_nofan=mean(familiarity))
+
+FanDiff <- full_join(FamFan, FamNotFan)
+
+FanDiff <- FanDiff %>% 
+  mutate(familiarity_diff = avg_fam_fan - avg_fam_nofan)%>% 
+  arrange(desc(familiarity_diff))
+
+FanDiff
+```
+To find which words that are recognizable by Hiphop fans and less recognizable by none hiphop fans, I decided to categorize the subjects as a Fan or No_Fan if they liked more than 3 hiphop artists, because the third quartile for the hiphop genre is 3. I then found the average Familiarty each group had with each word. I then subtracted the difference of these averages. The words with the largest difference means (>1) and I suggest be used are "finna", "grip", "wile out", "twurk", "what it do" and "make it rain". The words with the lowest difference (>0) and I do not suggest be used are "off the hook", "break someone out", "chitlins", "The Nation", and "dun". 
+
+
+### 2. 
+```{r, echo = TRUE}
+hiphop$population <- ifelse(hiphop$city > 100000, "Large", 
+                            ifelse(hiphop$city > 50000, "Medium", "Small"))
+
+hiphop %>% 
+  filter(word == "boo" | word == "hella") %>% 
+  filter(population == "Large") %>% 
+  group_by(word) %>% 
+  summarise(CountFam = sum(fam1)) %>% 
+  ggplot(aes(x = word, y = CountFam, fill = word))+
+  geom_col()
+```
+
+"Hella" is the more popular word in larger cities.
+
+### 3.
+```{r, echo = TRUE}
+hiphop %>% 
+  select(subj, sex, ethnic, age, city, bieber) %>% 
+  filter(sex == "Male") %>% 
+  filter(ethnic == "white") %>% 
+  filter(age >= 17 & age<=23) %>% 
+  filter(city>= 10000 & city<=60000) %>% 
+  filter(bieber > 2) %>% 
+  group_by(subj)
+```
+Based on my analysis, I would have to say that Justin Bieber was subject p17. He is 18, from a city with a population of 56377, and is the only male that can name more than 2 Bieber songs. 
+

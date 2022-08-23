@@ -1,0 +1,216 @@
+---
+title: "Lab1"
+author: "Nick Bias"
+date: "9/24/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Task 1
+#### Identify, and list here, what aesthetics are being used and which variables are being mapped to each aesthetic.
+- X = Income variable 
+- Y = Life Expectency variable 
+- Fill = Four Regions variable
+- Size = Population variable 
+
+
+#### Import the q1data.csv dataset.
+```{r, echo=TRUE}
+library("tidyverse")
+options(scipen = 999)
+data <- read_csv("q1data.csv")
+```
+
+
+#### Recreate the plot as best you can using ggplot
+```{r, echo=TRUE}
+data %>%
+  ggplot(aes(x = income, y = life_exp, fill = four_regions, size = population)) +
+  geom_point(alpha = 0.8, shape = 21) +
+  ylab("Life expectancy") +
+  xlab("Income") + 
+  scale_fill_manual(values=c("cyan", "green", "hotpink", "yellow")) +
+  scale_size(range = c(1,15), name="index") +
+  scale_x_continuous(breaks=c(0, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000), trans = "log2") +
+  scale_y_continuous(limits = c(10, 90), breaks=c(10, 20, 30, 40, 50, 60, 70, 80, 90))
+```
+
+#### What other geometries could you use here besides geom_point? Provide an actual plot of another geometry being used here and why it’s good or bad for visualizing these data.
+```{r, echo=TRUE}
+data %>%
+  ggplot(aes(x = income, y = life_exp, color = four_regions, size = population)) +
+  geom_violin(alpha = 0.6, shape = 21) +
+  ylab("Life expectancy") +
+  xlab("Income") + 
+  scale_color_manual(values=c("cyan", "green", "hotpink", "yellow")) +
+  scale_size(range = c(1,15), name="index") +
+  scale_x_continuous(breaks=c(0, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000), trans = "log2")
+```
+
+A Violin Chart allows us to visualize the distribution for each continent of how incomes vary for each age. We are able to see that the spread of values is very similar to the scatter plot above.  
+I find this chart to be more legible then the scatterplot, however, this chart does not include the population as a size parameter and we do not see the actual spread of values, so it is a bad visualization for the specified data. 
+
+
+# Task 2
+#### Identify, and list here, what aesthetics are being used and which variables are being mapped to each aesthetic.
+- X =  Exports variable 
+- Y = Imports variable 
+- Fill = Four Regions variable 
+- Size = Energy variable 
+
+
+#### Import the q2data.csv dataset.
+```{r, echo=TRUE}
+data2 <- read_csv("q2data.csv")
+```
+
+#### Recreate the plot as best you can using ggplot.
+```{r, echo=TRUE}
+data2 %>%
+  ggplot(aes(x = exports, y = imports, fill = four_regions, size = as.numeric(energy))) +
+  geom_point(alpha = 0.8, shape = 21) +
+  ylab("Export") +
+  xlab("Imports") + 
+  scale_fill_manual(values=c("cyan", "green", "hotpink", "yellow")) +
+  scale_size(range = c(1,15), name="index") +
+  scale_y_continuous(limits = c(0, 400)) +
+  scale_x_continuous(limits = c(0, 220))
+```
+
+I decided to keep the points semi-translucent so I can see that it is similar to the provide picture.
+
+
+#### What other geometries could you use here besides geom_point? Provide an actual plot of another geometry being used here and why it’s good or bad for visualizing these data.
+```{r, echo=TRUE}
+data2 %>%
+  ggplot(aes(x = exports, y = imports, fill = four_regions, size = as.numeric(energy))) +
+  geom_boxplot(alpha = 0.8, shape = 21) +
+  ylab("Export") +
+  xlab("Imports") + 
+  scale_fill_manual(values=c("cyan", "green", "hotpink", "yellow")) 
+```
+
+A boxplot allows us to see a summary of the quartiles by each continent. The spread of values is similar to the scatterplot, but not exact.
+Again this chart is more legible then the bubble chart, except it does not account for a size variable and we do not see the actual spread of values, so it is a bad visualization for the specified data. 
+
+
+# Task 3
+#### Identify, and list here, what aesthetics are being used and which variables are being mapped to each aesthetic.
+- X = Internet Users variable 
+- Y = GDP variable 
+- Fill = Four Regions variable 
+- Size = Income variable 
+
+#### Import the q3data.csv dataset.
+```{r, echo=TRUE}
+data3 <- read_csv("q3data.csv")
+```
+
+#### Recreate the plot as best you can using ggplot.
+
+```{r, echo = TRUE}
+data3 %>%
+  ggplot(aes(x = internet_users, y = gdp, fill = four_regions, size = income)) +
+  geom_point(alpha = 0.9, shape = 21) +
+  ylab("GDP/capita") +
+  xlab("Individuals using th Internet") + 
+  scale_fill_manual(values=c("cyan", "green", "hotpink", "yellow")) +
+  scale_size(range = c(1,15), name="index") +
+  scale_y_continuous(limits = c(0, 100000)) +
+  scale_y_continuous(breaks=c(0, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000), trans = "log2")
+```
+
+I decided to keep the points semi-translucent so I can see that it is similar to the provide picture.
+
+#### What other geometries could you use here besides geom_point? Provide an actual plot of another geometry being used here and why it’s good or bad for visualizing these data.
+```{r, echo = TRUE}
+data3 %>%
+  ggplot(aes(x = internet_users, y = gdp, color = four_regions, label = income)) +
+  geom_text(alpha = 0.9, shape = 21) +
+  ylab("GDP/capita") +
+  xlab("Individuals using th Internet") + 
+  scale_color_manual(values=c("cyan", "green", "hotpink", "yellow")) +
+  scale_size(range = c(1,15), name="index") +
+  scale_y_continuous(limits = c(0, 100000)) +
+  scale_y_continuous(breaks=c(0, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000), trans = "log2")
+```
+
+Textual Annotations is very similar to the bubble chart, except the size of bubble are the exact income at each point in the scatterplot, however, it is very hard to read so it is a bad visualization for the specified data. 
+
+
+
+# Challenge Points
+
+#### For one of the Tasks above, create a visualization using the same variables but map them to different aesthetics than you used above (originally). Then answer the following questions:
+#### Task 1 Recreation
+OG = (x = income, y = life_exp, fill = four_regions, size = population)
+```{r, echo=TRUE}
+data %>%
+  ggplot(aes(x = population, y = four_regions, color = life_exp, alpha = income)) +
+  geom_point(size= 10, shape = 21) +
+  ylab("Continent") +
+  xlab("Population") +
+  scale_size(range = c(1,15), name="index")
+```
+
+#### Is this new graph better or worse than the original? Why?
+At its core this graph tells the same information as the Original. We can clearly see the difference between each of the continents, they are just not the color of the points. 
+The line thickness of each bubble, is how much income they make. Africa has the lightest bubble lines, meaning it has the lowest income, while Asia and Europe have the darkest bubble lines, meaning they have the most income. This agrees with our original graph. The color of each bubble, tells us the life expectancy. We can clearly see that Africa has the lowest life expectancy, while Europe has the highest life expectancy. This aligns with the Original as well. As we can see the X-axis is the population now, when it was size before, but we can clearly see that Asia still has the largest population in this graph, and Africa has the smallest. 
+
+Even though we can get the same information from this visualization, it is worse than the Original. This chart is much more cluttered and harder to see the difference in each point. We may be able to map the same variables to difference Aesthetics, but it does not mean that they will produce the same quality chart. 
+
+#### For each aesthetic used, write down your best, general advice on what kinds of variables or data would be best displayed using that aesthetic. Try to be as thoughtful and rich as possible. For example, color may seem like it is well suited for a categorical variable, but color gradients can be used well for continuous variables. If it helps, try to think not only of the computing aspects but the business/communication/marketing aspects as well.
+
+Aesthetics
+ggplot2 treats integers and doubles as continuous variables, and treats only factors, characters, and logicals as discrete.
+
+- **X**
+    - refers to Y axis
+  - Continuous Variables 
+    - You want to have a countable finite amount of points
+    - need Numerical data
+    - *Recommended*
+  - Categorical Variable
+    - Will make all the points appear on a line instead of scattered throughout the chart. 
+    - *Not recommended*
+- **Y**
+    - refers to Y axis
+  - Continuous Variables 
+    - You want to have a countable finite amount of points
+    - need Numerical data
+    - *Recommended*
+  - Categorical Variable
+    - Will make all the points appear on a line instead of scattered throughout the chart. 
+    - *Not recommended*
+- **Color**
+    - refers to colors of each point 
+  - Categorical Variable
+    - Should usually be this, that way each distinct category can have a different color, to allow the viewer to see a visual difference. 
+  - Continuous Variable
+    - Will allow you to have a gradient of color to see the difference.
+  - Can be either, it just depends on your data.
+- **Alpha**
+    - refers to the opacity of a geom
+  - Continuous Variables
+    - want to create a gradient of opacity for points
+    - need Numerical data
+    - However, No distinct start or stop of each opacity 
+  - Categorical Variable
+    - This way each category has a different opacity, allowing for viewer to see difference
+  - Can be either, it just depends on your data.
+
+
+
+
+
+
+
+
+
+

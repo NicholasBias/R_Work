@@ -1,0 +1,118 @@
+---
+title: "Lab3"
+author: "Nick Bias"
+date: "10/7/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(glue)
+library(english)
+xmas <- read.csv("https://www.dropbox.com/s/12ipnczn0fygglt/xmas.csv?dl=1")
+```
+
+# Step One: Make gift phrases
+```{r, echo = TRUE}
+make_phrase <- function(num, gift){
+  if (num == 1){
+    word_num <- "a"
+  }
+  else {
+    word_num <- english(num)
+  }
+  phrase <- glue("{word_num} {gift}")
+  return(phrase)
+}
+```
+
+```{r, echo = TRUE}
+make_phrase(num = 10, 
+            gift = "lords a-leaping")
+```
+
+```{r, echo = TRUE}
+xmas %>%
+  mutate(
+    Gift_Phrase = map2_chr(Day, Gift.Item, ~make_phrase(.x, .y))
+  )
+```
+
+```{r}
+map2_chr(xmas$Day, xmas$Gift.Item, ~make_phrase(.x, .y)) %>% 
+  cat(sep = "\n")
+```
+
+
+
+# Step Two: Verses
+```{r, echo = TRUE}
+sing_verse <- function(num, day_word, gift){
+  start_phrase <- glue("On the {day_word[num]} of Christmas, my true love sent to me,")
+  print(start_phrase)
+  if(num == 1){
+    verse <- make_phrase(num, gift[num])
+    cat(verse) %>% 
+    cat(sep = "\n")
+  } else {
+  for(i in num:1){
+    verse <- make_phrase(num, gift[num])
+    if(num == 1){
+    verse <- glue("and {verse}")
+  }
+    cat(verse) %>% 
+    cat(sep = "\n")
+    num <- num - 1
+  }}
+}
+sing_verse(2, xmas$Day.in.Words, xmas$Gift.Item)
+```
+
+```{r, echo=TRUE}
+sing_verse(12, xmas$Day.in.Words, xmas$Gift.Item)
+```
+
+# Step Three: Sing the whole song.
+```{r, echo = TRUE}
+sing_xmas_song <- function(vec, day_word, gift){
+  for(i in vec){
+    verse <- sing_verse(i, day_word, gift)
+    cat(verse) %>% 
+    cat(sep = "\n")
+  }
+}
+
+sing_xmas_song(xmas$Day, xmas$Day.in.Words, xmas$Gift.Item)
+```
+
+# Step Four: Try your functions
+```{r, echo = TRUE}
+xmas2 <- read.csv("https://www.dropbox.com/s/tmilnd6ad8k26wy/xmas2.csv?dl=1")
+```
+
+```{r, echo = TRUE}
+sing_xmas_song(xmas2$Day, xmas2$Day.in.Words, xmas2$Gift.Item)
+```
+
+
+```{r}
+xmas %>% 
+  sing_xmas_song(Day, Day.in.Words, Gift.Item)
+```
+
+
+```{r}
+xmas %>%
+  sing_verse(3, Day.in.Words, Gift.Item)
+```
+
+

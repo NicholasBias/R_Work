@@ -1,0 +1,805 @@
+---
+title: "Final_Cat"
+author: "Nick Bias"
+date: "12/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(rpart.plot)
+library(discrim)
+library(baguette)
+library(janitor)
+library(vip)
+library(kknn)
+library(parallel)
+library(nnet)
+options(scipen=99)
+```
+
+
+# Load & Clean Data
+```{r}
+train <- read.csv("CAH-201803-train.csv")
+
+train <- train %>% 
+  mutate(
+    Q1 = factor(Q1),
+    political_affiliation = factor(political_affiliation),
+    Q4 = factor(Q4),
+    Q5 = factor(Q5),
+    Q6 = factor(Q6),
+    Q7 = factor(Q7),
+    Q8 = factor(Q8),
+    Q9 = factor(Q9),
+    Q10 = factor(Q10),
+    Q11 = factor(Q11),
+    Q12 = factor(Q12),
+    Q13 = factor(Q13),
+    Q14 = factor(Q14),
+    Q15 = factor(Q15),
+    Q16 = factor(Q16),
+    Q17 = factor(Q17),
+    Q18 = factor(Q18)
+  )
+```
+
+```{r}
+summary(train)
+```
+
+# Cross Validation dataset
+```{r}
+set.seed(1)
+train_cv5 <- vfold_cv(train, v = 5)
+```
+
+# Recipes 
+```{r}
+rec1 <- recipe(political_affiliation ~ ., data = train)
+
+rec2 <- recipe(political_affiliation ~ ., data = train) %>% 
+  step_dummy(all_nominal(), -all_outcomes())
+
+rec3 <- recipe(political_affiliation ~ ., data = train) %>% 
+  step_normalize(all_numeric()) %>% 
+  step_dummy(all_nominal(), -all_outcomes())
+
+rec4 <- recipe(political_affiliation ~ Q2 + Q4 + Q6 + Q10 + Q15 + Q17 + Q18, data = train)
+
+rec5 <- recipe(political_affiliation ~ Q2 + Q4 + Q6 + Q10 + Q15 + Q17 + Q18, data = train)%>% 
+  step_dummy(all_nominal(), -all_outcomes())
+
+rec6 <- recipe(political_affiliation ~ Q2 + Q4 + Q6 + Q10 + Q15 + Q17 + Q18, data = train)%>% 
+  step_dummy(all_nominal(), -all_outcomes()) %>% 
+  step_dummy(all_nominal(), -all_outcomes())
+```
+
+
+# Models 
+
+### Logistic Regression
+```{r}
+log_reg_spec <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+wflow <- workflow() %>% 
+  add_model(log_reg_spec) %>% 
+  add_recipe(rec1)
+
+model_fit <- wflow %>% 
+  fit(train)
+
+wflow_fit <- model_fit %>% pull_workflow_fit() 
+wflow_fit$fit %>% summary()
+```
+
+``{r}
+train_fit <- log_reg_spec %>%
+  fit_resamples(rec1, 
+                resamples = train_cv5,
+                
+                control = control_resamples(save_pred = TRUE))
+
+lr <- train_fit %>% collect_metrics() %>% mutate(Model="Logistic Regression", .before=.metric)
+lr
+``
+Wont work because logistic regression is for binary classification 
+
+### KNN
+```{r}
+knn_mod <- nearest_neighbor(neighbors = 35) %>%
+  set_engine("kknn") %>%
+  set_mode("classification")
+
+knn_rec1 <- knn_mod %>% 
+  fit_resamples(rec1, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+knn_rec2 <- knn_mod %>% 
+  fit_resamples(rec2, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+knn_rec3 <- knn_mod %>% 
+  fit_resamples(rec3, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+knn_rec4 <- knn_mod %>% 
+  fit_resamples(rec4, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+knn_rec5 <- knn_mod %>% 
+  fit_resamples(rec5, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+knn_rec6 <- knn_mod %>% 
+  fit_resamples(rec6, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+
+knn1 <- knn_rec1 %>% collect_metrics() %>% mutate(Model="KNN-1", .before=.metric)
+knn2 <- knn_rec2 %>% collect_metrics() %>% mutate(Model="KNN-2", .before=.metric)
+knn3 <- knn_rec3 %>% collect_metrics() %>% mutate(Model="KNN-3", .before=.metric)
+knn4 <- knn_rec4 %>% collect_metrics() %>% mutate(Model="KNN-4", .before=.metric)
+knn5 <- knn_rec5 %>% collect_metrics() %>% mutate(Model="KNN-5", .before=.metric)
+knn6 <- knn_rec6 %>% collect_metrics() %>% mutate(Model="KNN-6", .before=.metric)
+```
+
+```{r}
+Model_Comp <- rbind(knn1, knn2, knn3, knn4, knn5, knn6) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+
+Model_Comp
+```
+
+**KNN-4 is the winner**
+knn_wflow <- workflow() %>% 
+  add_model(knn_mod) %>% 
+  add_recipe(rec)
+  
+```{r}
+knn_mod_tune <- nearest_neighbor(neighbors = tune()) %>%
+  set_engine("kknn") %>%
+  set_mode("classification")
+
+k_grid <- grid_regular(neighbors(c(1,50)),
+                       levels = 11)
+
+knn_tune_wf <- workflow() %>% 
+  add_model(knn_mod_tune) %>% 
+  add_recipe(rec5)
+
+knn_grid_search2 <-
+  tune_grid(
+    knn_tune_wf,
+    resamples = train_cv5,
+    grid = k_grid
+  )
+```
+
+```{r}
+knn_grid_search2 %>% collect_metrics()
+```
+K = 35
+
+
+### LDA
+```{r}
+lda_mod <- discrim_linear() %>%
+  set_engine("MASS") %>%
+  set_mode("classification")
+
+lda_rec1 <- lda_mod %>% 
+  fit_resamples(rec1, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+lda_rec2 <- lda_mod %>% 
+  fit_resamples(rec2, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+lda_rec3 <- lda_mod %>% 
+  fit_resamples(rec3, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+lda_rec4 <- lda_mod %>% 
+  fit_resamples(rec4, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+lda_rec5 <- lda_mod %>% 
+  fit_resamples(rec5, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+lda_rec6 <- lda_mod %>% 
+  fit_resamples(rec6, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+```
+
+```{r}
+lda1 <- lda_rec1 %>% collect_metrics() %>% mutate(Model="LDA-1", .before=.metric)
+lda2 <- lda_rec2 %>% collect_metrics() %>% mutate(Model="LDA-2", .before=.metric)
+lda3 <- lda_rec3 %>% collect_metrics() %>% mutate(Model="LDA-3", .before=.metric)
+lda4 <- lda_rec4 %>% collect_metrics() %>% mutate(Model="LDA-4", .before=.metric)
+lda5 <- lda_rec5 %>% collect_metrics() %>% mutate(Model="LDA-5", .before=.metric)
+lda6 <- lda_rec6 %>% collect_metrics() %>% mutate(Model="LDA-6", .before=.metric)
+
+lda_Comp <- rbind(lda1, lda2, lda3, lda4, lda5, lda6) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+lda_Comp
+```
+
+Not much of difference 
+LDA-1 
+LDA-4
+
+### QDA
+```{r}
+qda_mod <- discrim_regularized(frac_common_cov = 0) %>% 
+             set_engine('klaR') %>% 
+             set_mode('classification')
+
+qda_rec1 <- qda_mod %>% 
+  fit_resamples(rec1, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+qda_rec2 <- qda_mod %>% 
+  fit_resamples(rec2, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+qda_rec3 <- qda_mod %>% 
+  fit_resamples(rec3, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+qda_rec4 <- qda_mod %>% 
+  fit_resamples(rec4, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+qda_rec5 <- qda_mod %>% 
+  fit_resamples(rec5, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+qda_rec6 <- qda_mod %>% 
+  fit_resamples(rec6, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+```
+
+```{r}
+qda1 <- qda_rec1 %>% collect_metrics() %>% mutate(Model="QDA-1", .before=.metric)
+qda2 <- qda_rec2 %>% collect_metrics() %>% mutate(Model="QDA-2", .before=.metric)
+qda3 <- qda_rec3 %>% collect_metrics() %>% mutate(Model="QDA-3", .before=.metric)
+qda4 <- qda_rec4 %>% collect_metrics() %>% mutate(Model="QDA-4", .before=.metric)
+qda5 <- qda_rec5 %>% collect_metrics() %>% mutate(Model="QDA-5", .before=.metric)
+qda6 <- qda_rec6 %>% collect_metrics() %>% mutate(Model="QDA-6", .before=.metric)
+
+qda_Comp <- rbind(qda1, qda2, qda3, qda4, qda5, qda6) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+qda_Comp
+```
+**QDA-5**
+
+
+### SVM 
+```{r}
+svm_spec <- svm_poly(cost = tune(), degree = 1) %>%
+  set_mode("classification") %>%
+  set_engine("kernlab")
+
+
+k_grid <- grid_regular(cost(),
+                       levels = 10)
+
+fed_wflow <- workflow() %>%
+  add_model(svm_spec) %>%
+  add_recipe(rec1)
+
+knn_grid_search1 <-
+  tune_grid(
+    fed_wflow,
+    resamples = train_cv5,
+    grid = k_grid
+  )
+
+tuning_metrics <- knn_grid_search1 %>% collect_metrics()
+
+tuning_metrics %>% 
+  filter(.metric == "accuracy") %>% 
+  slice_max(mean)
+```
+
+
+```{r}
+svm_spec <- svm_poly(cost = 0.09921257, degree = 1) %>%
+  set_mode("classification") %>%
+  set_engine("kernlab")
+
+svm_rec1 <- svm_spec %>% 
+  fit_resamples(rec1, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+svm_rec2 <- svm_spec %>% 
+  fit_resamples(rec2, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+svm_rec3 <- svm_spec %>% 
+  fit_resamples(rec3, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+svm_rec4 <- svm_spec %>% 
+  fit_resamples(rec4, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+svm_rec5 <- svm_spec %>% 
+  fit_resamples(rec5, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+svm_rec6 <- svm_spec %>% 
+  fit_resamples(rec6, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE))
+```
+
+```{r}
+svm1 <- svm_rec1 %>% collect_metrics() %>% mutate(Model="SVM-1", .before=.metric)
+svm2 <- svm_rec2 %>% collect_metrics() %>% mutate(Model="SVM-2", .before=.metric)
+svm3 <- svm_rec3 %>% collect_metrics() %>% mutate(Model="SVM-3", .before=.metric)
+svm4 <- svm_rec4 %>% collect_metrics() %>% mutate(Model="SVM-4", .before=.metric)
+svm5 <- svm_rec5 %>% collect_metrics() %>% mutate(Model="SVM-5", .before=.metric)
+svm6 <- svm_rec6 %>% collect_metrics() %>% mutate(Model="SVM-6", .before=.metric)
+
+svm_Comp <- rbind(svm1, svm2, svm3, svm4, svm5, svm6) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+svm_Comp
+```
+
+**SVM-1**
+
+### PCA
+``{r}
+pca_rec1 <- recipe(political_affiliation ~ ., data = train) %>% 
+  step_pca(all_predictors())
+
+knn_mod_tune <- nearest_neighbor(neighbors = tune()) %>%
+  set_engine("kknn") %>%
+  set_mode("classification")
+
+k_grid <- grid_regular(neighbors(c(1,10)),
+                       levels = 10)
+
+wflow_knn_tune <- workflow() %>% 
+  add_model(knn_mod_tune) %>% 
+  add_recipe(pca_rec1)
+
+knn_grid_search1 <-
+  tune_grid(
+    wflow_knn_tune,
+    resamples = train_cv5,
+    grid = k_grid
+  )
+
+knn_grid_search1 %>% collect_metrics()
+``
+
+Wont work. All columns selected for the step should be numeric
+
+
+### Decision Tree
+```{r}
+tree_mod <- decision_tree() %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+tree_rec1 <- tree_mod %>% 
+  fit_resamples(rec1, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+tree_rec2 <- tree_mod %>% 
+  fit_resamples(rec2, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+tree_rec3 <- tree_mod %>% 
+  fit_resamples(rec3, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+tree_rec4 <- tree_mod %>% 
+  fit_resamples(rec4, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+tree_rec5 <- tree_mod %>% 
+  fit_resamples(rec5, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+tree_rec6 <- tree_mod %>% 
+  fit_resamples(rec6, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+```
+
+```{r}
+tree1 <- tree_rec1 %>% collect_metrics() %>% mutate(Model="Tree-1", .before=.metric)
+tree2 <- tree_rec2 %>% collect_metrics() %>% mutate(Model="Tree-2", .before=.metric)
+tree3 <- tree_rec3 %>% collect_metrics() %>% mutate(Model="Tree-3", .before=.metric)
+tree4 <- tree_rec4 %>% collect_metrics() %>% mutate(Model="Tree-4", .before=.metric)
+tree5 <- tree_rec5 %>% collect_metrics() %>% mutate(Model="Tree-5", .before=.metric)
+tree6 <- tree_rec6 %>% collect_metrics() %>% mutate(Model="Tree-6", .before=.metric)
+
+tree_Comp <- rbind(tree1, tree2, tree3, tree4, tree5, tree6) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+tree_Comp
+```
+Tree-5 
+
+```{r}
+tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(),
+                          min_n(), 
+                          levels = 2)
+
+tree_mod2 <- decision_tree(cost_complexity = tune(),
+                          tree_depth = tune(),
+                          min_n = tune()) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+tree_wflow2 <- workflow() %>%
+  add_recipe(rec5) %>%
+  add_model(tree_mod2)
+
+tree_grid_search <-
+  tune_grid(
+    tree_wflow2,
+    resamples = train_cv5,
+    grid = tree_grid
+  )
+
+tuning_metrics <- tree_grid_search %>% collect_metrics()
+tuning_metrics %>% 
+  filter(.metric == "accuracy") %>% 
+  slice_max(mean)
+```
+
+```{r}
+tree_mod <- decision_tree(cost_complexity = 0.0000000001,
+                          tree_depth = 1,
+                          min_n = 40) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+tree_rec1 <- tree_mod %>% 
+  fit_resamples(rec1, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+tree_rec2 <- tree_mod %>% 
+  fit_resamples(rec2, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+tree_rec3 <- tree_mod %>% 
+  fit_resamples(rec3, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+tree_rec4 <- tree_mod %>% 
+  fit_resamples(rec4, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+tree_rec5 <- tree_mod %>% 
+  fit_resamples(rec5, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+tree_rec6 <- tree_mod %>% 
+  fit_resamples(rec6, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+```
+
+```{r}
+tree1 <- tree_rec1 %>% collect_metrics() %>% mutate(Model="Tree-1", .before=.metric)
+tree2 <- tree_rec2 %>% collect_metrics() %>% mutate(Model="Tree-2", .before=.metric)
+tree3 <- tree_rec3 %>% collect_metrics() %>% mutate(Model="Tree-3", .before=.metric)
+tree4 <- tree_rec4 %>% collect_metrics() %>% mutate(Model="Tree-4", .before=.metric)
+tree5 <- tree_rec5 %>% collect_metrics() %>% mutate(Model="Tree-5", .before=.metric)
+tree6 <- tree_rec6 %>% collect_metrics() %>% mutate(Model="Tree-6", .before=.metric)
+
+tree_Comp <- rbind(tree1, tree2, tree3, tree4, tree5, tree6) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+tree_Comp
+```
+Tree-5
+
+### Random Forest
+```{r}
+cores <- detectCores()
+
+rf_mod <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_engine("ranger", num.threads = cores) %>% 
+  set_mode("classification")
+
+
+
+rf_res <- rf_mod %>% 
+  tune_grid(rec1,
+            resamples = train_cv5,
+            grid = 10,
+            control = control_grid(save_pred = TRUE),
+            metrics = metric_set(accuracy, roc_auc, recall, precision))
+  
+tuning_metrics2 <- rf_res %>% collect_metrics()
+
+tuning_metrics2 %>% 
+  filter(.metric == "accuracy") %>% 
+  slice_max(mean)
+```
+
+rec1 - 58.64
+rec4 - 58.09
+rec2 - 58.04
+rec3 - 58.04
+rec5 - 58.02
+rec6 - 58.61
+
+```{r}
+cores <- detectCores()
+rf_mod <- 
+  rand_forest(mtry = 15, min_n = 36, trees = 1000) %>% 
+  set_engine("ranger", num.threads = cores) %>% 
+  set_mode("classification")
+
+rf_rec1 <- rf_mod %>% 
+  fit_resamples(rec1, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+rf_rec2 <- rf_mod %>% 
+  fit_resamples(rec2, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+rf_rec3 <- rf_mod %>% 
+  fit_resamples(rec3, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+rf_rec4 <- rf_mod %>% 
+  fit_resamples(rec4, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+rf_rec5 <- rf_mod %>% 
+  fit_resamples(rec5, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+rf_rec6 <- rf_mod %>% 
+  fit_resamples(rec6, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+```
+
+```{r}
+rf1 <- rf_rec1 %>% collect_metrics() %>% mutate(Model="RF-1", .before=.metric)
+rf2 <- rf_rec2 %>% collect_metrics() %>% mutate(Model="RF-2", .before=.metric)
+rf3 <- rf_rec3 %>% collect_metrics() %>% mutate(Model="RF-3", .before=.metric)
+rf4 <- rf_rec4 %>% collect_metrics() %>% mutate(Model="RF-4", .before=.metric)
+rf5 <- rf_rec5 %>% collect_metrics() %>% mutate(Model="RF-5", .before=.metric)
+rf6 <- rf_rec6 %>% collect_metrics() %>% mutate(Model="RF-6", .before=.metric)
+
+tree_Comp <- rbind(rf1, rf2, rf3, rf4, rf5, rf6) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+tree_Comp
+```
+
+
+### Neural Network
+
+```{r}
+nn_mod <- mlp(
+  hidden_units = 12,
+  penalty = 1,
+  epochs = 100,
+  activation = "linear") %>%
+  set_engine("nnet") %>%
+  set_mode("classification")
+
+nn_rec1 <- nn_mod %>% 
+  fit_resamples(rec1, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+nn_rec2 <- nn_mod %>% 
+  fit_resamples(rec2, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+nn_rec3 <- nn_mod %>% 
+  fit_resamples(rec3, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+nn_rec4 <- nn_mod %>% 
+  fit_resamples(rec4, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+nn_rec5 <- nn_mod %>% 
+  fit_resamples(rec5, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+nn_rec6 <- nn_mod %>% 
+  fit_resamples(rec6, 
+                resamples = train_cv5, 
+                metrics = metric_set(accuracy, roc_auc, precision, recall),
+                control = control_resamples(save_pred = TRUE)) 
+
+nn1 <- nn_rec1 %>% collect_metrics() %>% mutate(Model="NN-1", .before=.metric)
+nn2 <- nn_rec2 %>% collect_metrics() %>% mutate(Model="NN-2", .before=.metric)
+nn3 <- nn_rec3 %>% collect_metrics() %>% mutate(Model="NN-3", .before=.metric)
+nn4 <- nn_rec4 %>% collect_metrics() %>% mutate(Model="NN-4", .before=.metric)
+nn5 <- nn_rec5 %>% collect_metrics() %>% mutate(Model="NN-5", .before=.metric)
+nn6 <- nn_rec6 %>% collect_metrics() %>% mutate(Model="NN-6", .before=.metric)
+
+nn_Comp <- rbind(nn1, nn2, nn3, nn4, nn5, nn6) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+nn_Comp
+```
+
+
+```{r}
+nn_grid <- grid_regular(
+  hidden_units(c(2, 12)),
+  penalty(c(-5, 0)),
+  levels = 3
+)
+
+nn_mod_tune <- mlp(
+  hidden_units = tune(),
+  penalty = tune(),
+  epochs = 100,
+  activation = "linear") %>%
+  set_engine("nnet") %>%
+  set_mode("classification")
+
+nn_wflow_tune <- workflow() %>%
+  add_recipe(rec4) %>%
+  add_model(nn_mod_tune)
+
+nn_grid_search <-
+  tune_grid(
+    nn_wflow_tune,
+    resamples = train_cv5,
+    grid = nn_grid
+  )
+
+tuning_metrics <- nn_grid_search %>%
+  collect_metrics()
+tuning_metrics %>% 
+  filter(.metric == "accuracy") %>% 
+  slice_max(mean)
+```
+
+
+
+# Comparing all Classification Models 
+```{r}
+Model_Comp <- rbind(knn4, knn5, lda1, lda4, qda5, qda6, svm1, svm4, tree5, rf2, rf6, nn3, nn4) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+Model_Comp
+```
+
+
+
+# Predictions 
+```{r}
+test <- read.csv("CAH-201803-test.csv")
+
+test <- test %>% 
+  mutate(
+    Q1 = factor(Q1),
+    Q4 = factor(Q4),
+    Q5 = factor(Q5),
+    Q6 = factor(Q6),
+    Q7 = factor(Q7),
+    Q8 = factor(Q8),
+    Q9 = factor(Q9),
+    Q10 = factor(Q10),
+    Q11 = factor(Q11),
+    Q12 = factor(Q12),
+    Q13 = factor(Q13),
+    Q14 = factor(Q14),
+    Q15 = factor(Q15),
+    Q16 = factor(Q16),
+    Q17 = factor(Q17),
+    Q18 = factor(Q18)
+  )
+summary(test)
+```
+
+```{r}
+rec4 <- recipe(political_affiliation ~ Q2 + Q4 + Q6 + Q10 + Q15 + Q17 + Q18, data = train)
+
+knn_mod <- nearest_neighbor(neighbors = 35) %>%
+  set_engine("kknn") %>%
+  set_mode("classification")
+
+knn_wflow <- workflow() %>%
+  add_model(knn_mod) %>%
+  add_recipe(rec4) 
+
+knn_final <- knn_wflow %>% fit(train)
+```
+
+
+
+```{r}
+final_predictions <- data.frame(
+    id_num  = test$id_num,
+    political_affiliation_predicted = predict(knn_final, test)$.pred_class
+)
+```
+
+```{r}
+final_predictions %>% write_csv("NickBias_FinalPredictions.csv")
+```
+

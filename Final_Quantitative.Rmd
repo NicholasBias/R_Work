@@ -1,0 +1,843 @@
+---
+title: "Final_Quantitative"
+author: "Nick Bias"
+date: "12/7/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE, error=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(tidymodels)
+library(janitor)
+library(nnet)
+library(parallel)
+options(scipen=99)
+```
+# Data
+```{r}
+train <- read.csv("train_new.csv")
+
+
+train <- train %>% 
+  clean_names() %>% 
+  mutate_if(is.character, factor) %>% 
+  mutate(
+    bedroom_abv_gr= factor(bedroom_abv_gr),
+    yr_sold = factor(yr_sold),
+    tot_rms_abv_grd = factor(tot_rms_abv_grd),
+    half_bath = factor(half_bath),
+    full_bath = factor(full_bath),
+    overall_qual = factor(overall_qual),
+    overall_cond = factor(overall_cond),
+    Age = 2021 - year_built, .before=roof_style,
+    log_sale_price = log(sale_price),
+    log_lot_frontage = log(lot_frontage),
+    log_lot_area = log(lot_area), 
+    log_pool_area = log(pool_area),
+    log_screen_porch = log(screen_porch),
+    log_gr_liv_area = log(gr_liv_area)
+  )
+
+train$lot_frontage[is.na(train$lot_frontage)] <- mean(train$lot_frontage, na.rm=TRUE)
+
+summary(train)
+```
+```{r}
+test <- read.csv("test_new.csv")
+
+
+test <- test %>% 
+  clean_names() %>% 
+  mutate_if(is.character, factor) %>% 
+  mutate(
+    bedroom_abv_gr= factor(bedroom_abv_gr),
+    yr_sold = factor(yr_sold),
+    tot_rms_abv_grd = factor(tot_rms_abv_grd),
+    half_bath = factor(half_bath),
+    full_bath = factor(full_bath),
+    overall_qual = factor(overall_qual),
+    overall_cond = factor(overall_cond),
+    Age = 2021 - year_built, .before=roof_style,
+    log_lot_frontage = log(lot_frontage),
+    log_lot_area = log(lot_area), 
+    log_pool_area = log(pool_area),
+    log_screen_porch = log(screen_porch),
+    log_gr_liv_area = log(gr_liv_area)
+  )
+
+#train$lot_frontage[is.na(train$lot_frontage)] <- mean(train$lot_frontage, na.rm=TRUE)
+
+summary(test)
+```
+# Cross Validation dataset
+```{r}
+set.seed(45623)
+train_cv5 <- vfold_cv(train, v = 5)
+train_cv10 <- vfold_cv(train, v = 10)
+```
+
+# Recipes
+```{r}
+rec1 <- recipe(log_sale_price ~ lot_frontage+lot_area+street+neighborhood+bldg_type+house_style+overall_qual+overall_cond+year_built+Age+roof_style+heating+central_air+electrical+full_bath+half_bath+bedroom_abv_gr+tot_rms_abv_grd+gr_liv_area+functional+screen_porch+pool_area+yr_sold+sale_type, data= train) %>% 
+  step_dummy(all_nominal(), -all_outcomes())
+
+rec1_1 <- recipe(log_sale_price ~ lot_frontage+lot_area+street+neighborhood+bldg_type+house_style+overall_qual+overall_cond+year_built+Age+roof_style+heating+central_air+electrical+full_bath+half_bath+bedroom_abv_gr+tot_rms_abv_grd+gr_liv_area+functional+screen_porch+pool_area+yr_sold+sale_type, data= train) 
+
+
+rec2 <- recipe(log_sale_price ~ log_lot_frontage+log_lot_area+street+neighborhood+bldg_type+house_style+overall_qual+overall_cond+year_built+Age+roof_style+heating+central_air+electrical+full_bath+half_bath+bedroom_abv_gr+tot_rms_abv_grd+log_gr_liv_area+functional+screen_porch+pool_area+yr_sold+sale_type, data= train) %>% 
+  step_dummy(all_nominal(), -all_outcomes())
+
+rec2_1 <- recipe(log_sale_price ~ log_lot_frontage+log_lot_area+street+neighborhood+bldg_type+house_style+overall_qual+overall_cond+year_built+Age+roof_style+heating+central_air+electrical+full_bath+half_bath+bedroom_abv_gr+tot_rms_abv_grd+log_gr_liv_area+functional+screen_porch+pool_area+yr_sold+sale_type, data= train)
+
+
+rec3 <- recipe(log_sale_price ~ lot_frontage+lot_area+street+neighborhood+bldg_type+house_style+overall_qual+overall_cond+year_built+Age+roof_style+heating+central_air+full_bath+half_bath+gr_liv_area+functional+screen_porch+pool_area+sale_type, data= train) %>% 
+  step_dummy(all_nominal(), -all_outcomes())
+
+rec3_1 <- recipe(log_sale_price ~ lot_frontage+lot_area+street+neighborhood+bldg_type+house_style+overall_qual+overall_cond+year_built+Age+roof_style+heating+central_air+full_bath+half_bath+gr_liv_area+functional+screen_porch+pool_area+sale_type, data= train) 
+
+
+rec4 <- recipe(log_sale_price ~ log_lot_frontage+log_lot_area+street+neighborhood+bldg_type+house_style+overall_qual+overall_cond+year_built+Age+roof_style+heating+central_air+full_bath+half_bath+log_gr_liv_area+functional+screen_porch+pool_area+sale_type, data= train) %>% 
+  step_dummy(all_nominal(), -all_outcomes())
+
+rec4_1 <- recipe(log_sale_price ~ log_lot_frontage+log_lot_area+street+neighborhood+bldg_type+house_style+overall_qual+overall_cond+year_built+Age+roof_style+heating+central_air+full_bath+half_bath+log_gr_liv_area+functional+screen_porch+pool_area+sale_type, data= train) 
+```
+
+# Plots
+## sales
+```{r}
+train %>% 
+  ggplot(aes(x=sale_price))+
+  geom_histogram()
+```
+```{r}
+train %>% 
+  ggplot(aes(x=log_sale_price))+
+  geom_histogram()
+```
+## lot_frontage
+```{r}
+train %>% 
+  ggplot(aes(x=lot_frontage))+
+  geom_histogram()
+test %>% 
+  ggplot(aes(x=lot_frontage))+
+  geom_histogram()
+```
+```{r}
+train %>% 
+  ggplot(aes(x=log_lot_frontage))+
+  geom_histogram()
+test %>% 
+  ggplot(aes(x=log_lot_frontage))+
+  geom_histogram()
+```
+## lot_area
+```{r}
+train %>% 
+  ggplot(aes(x=lot_area))+
+  geom_histogram()
+test %>% 
+  ggplot(aes(x=lot_area))+
+  geom_histogram()
+```
+```{r}
+train %>% 
+  ggplot(aes(x=log_lot_area))+
+  geom_histogram()
+test %>% 
+  ggplot(aes(x=log_lot_area))+
+  geom_histogram()
+```
+
+
+## pool_area         
+```{r}
+train %>% 
+  ggplot(aes(x=pool_area))+
+  geom_histogram()
+test %>% 
+  ggplot(aes(x=pool_area))+
+  geom_histogram()
+```
+```{r}
+train %>% 
+  ggplot(aes(x=log_pool_area))+
+  geom_histogram()
+test %>% 
+  ggplot(aes(x=log_pool_area))+
+  geom_histogram()
+```
+## screen_porch
+```{r}
+train %>% 
+  ggplot(aes(x=screen_porch))+
+  geom_histogram()
+test %>% 
+  ggplot(aes(x=screen_porch))+
+  geom_histogram()
+```
+```{r}
+train %>% 
+  ggplot(aes(x=log_screen_porch))+
+  geom_histogram()
+test %>% 
+  ggplot(aes(x=log_screen_porch))+
+  geom_histogram()
+```
+
+
+
+
+
+## gr_liv_area
+```{r}
+train %>% 
+  ggplot(aes(x=gr_liv_area))+
+  geom_histogram()
+test %>% 
+  ggplot(aes(x=gr_liv_area))+
+  geom_histogram()
+```
+```{r}
+train %>% 
+  ggplot(aes(x=log_gr_liv_area))+
+  geom_histogram()
+test %>% 
+  ggplot(aes(x=log_gr_liv_area))+
+  geom_histogram()
+```
+
+
+
+ 
+house size and bedrooms 
+
+# Significant Variables
+```{r}
+lr_mod <- linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+
+wflow <- workflow() %>% 
+  add_model(lr_mod) %>% 
+  add_recipe(rec1)
+
+model_fit <- wflow %>% 
+  fit(train)
+
+wflow_fit <- model_fit %>% pull_workflow_fit() 
+wflow_fit$fit %>% summary()
+```
+```{r}
+lr_mod <- linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+
+wflow <- workflow() %>% 
+  add_model(lr_mod) %>% 
+  add_recipe(rec2)
+
+model_fit <- wflow %>% 
+  fit(train)
+
+wflow_fit <- model_fit %>% pull_workflow_fit() 
+wflow_fit$fit %>% summary()
+```
+
+
+
+
+# Models
+## Linear Regression
+
+
+```{r}
+lr_mod <- linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+
+lr_rec1_5 <- lr_mod %>% 
+  fit_resamples(rec1,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+lr_rec1_1_5 <- lr_mod %>% 
+  fit_resamples(rec1_1,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+
+lr_rec2_5 <- lr_mod %>% 
+  fit_resamples(rec2,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+lr_rec2_1_5 <- lr_mod %>% 
+  fit_resamples(rec2_1,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+
+lr_rec3_5 <- lr_mod %>% 
+  fit_resamples(rec3,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+lr_rec3_1_5 <- lr_mod %>% 
+  fit_resamples(rec3_1,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+
+lr_rec4_5 <- lr_mod %>% 
+  fit_resamples(rec4,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+lr_rec4_1_5 <- lr_mod %>% 
+  fit_resamples(rec4_1,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+```
+```{r}
+lr1 <- lr_rec1_5 %>% collect_metrics() %>% mutate(Model="LR-1", .before=.metric)
+lr1_1 <- lr_rec1_1_5 %>% collect_metrics() %>% mutate(Model="LR-1-1", .before=.metric)
+
+lr2 <- lr_rec2_5 %>% collect_metrics() %>% mutate(Model="LR-2", .before=.metric)
+lr2_1 <- lr_rec2_1_5 %>% collect_metrics() %>% mutate(Model="LR-2-1", .before=.metric)
+
+lr3 <- lr_rec3_5 %>% collect_metrics() %>% mutate(Model="LR-3", .before=.metric)
+lr3_1 <- lr_rec3_1_5 %>% collect_metrics() %>% mutate(Model="LR-3-1", .before=.metric)
+
+lr4 <- lr_rec4_5 %>% collect_metrics() %>% mutate(Model="LR-4", .before=.metric)
+lr4_1 <- lr_rec4_1_5 %>% collect_metrics() %>% mutate(Model="LR-4-1", .before=.metric)
+```
+
+```{r}
+lr_Comp <- rbind(lr1, lr1_1, lr2, lr2_1, lr3, lr3_1, lr4, lr4_1) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+
+lr_Comp
+```
+```{r}
+lr_rec1_10 <- lr_mod %>% 
+  fit_resamples(rec1,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+lr_rec1_1_10 <- lr_mod %>% 
+  fit_resamples(rec1_1,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+
+lr_rec2_10 <- lr_mod %>% 
+  fit_resamples(rec2,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+lr_rec2_1_10 <- lr_mod %>% 
+  fit_resamples(rec2_1,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+
+lr_rec3_10 <- lr_mod %>% 
+  fit_resamples(rec3,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+lr_rec3_1_10 <- lr_mod %>% 
+  fit_resamples(rec3_1,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+
+lr_rec4_10 <- lr_mod %>% 
+  fit_resamples(rec4,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+lr_rec4_1_10 <- lr_mod %>% 
+  fit_resamples(rec4_1,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+```
+```{r}
+lr1_10 <- lr_rec1_10 %>% collect_metrics() %>% mutate(Model="LR-1_10", .before=.metric)
+lr1_1_10 <- lr_rec1_1_10 %>% collect_metrics() %>% mutate(Model="LR-1-1_10", .before=.metric)
+
+lr2_10 <- lr_rec2_10 %>% collect_metrics() %>% mutate(Model="LR-2_10", .before=.metric)
+lr2_1_10 <- lr_rec2_1_10 %>% collect_metrics() %>% mutate(Model="LR-2-1_10", .before=.metric)
+
+lr3_10 <- lr_rec3_10 %>% collect_metrics() %>% mutate(Model="LR-3_10", .before=.metric)
+lr3_1_10 <- lr_rec3_1_10 %>% collect_metrics() %>% mutate(Model="LR-3-1_10", .before=.metric)
+
+lr4_10 <- lr_rec4_10 %>% collect_metrics() %>% mutate(Model="LR-4_10", .before=.metric)
+lr4_1_10 <- lr_rec4_1_10 %>% collect_metrics() %>% mutate(Model="LR-4-1_10", .before=.metric)
+```
+
+```{r}
+lr_Comp <- rbind(lr1_10, lr1_1_10, lr2_10, lr2_1_10, lr3_10, lr3_1_10, lr4_10, lr4_1_10) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+
+lr_Comp
+```
+
+**Linear Regression Model 4_1** seems to be performing the best
+lr4_1_10
+lr4_1
+
+## Regression Tree
+```{r}
+tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(),
+                          min_n(), 
+                          levels = 2)
+
+tree_mod <- decision_tree(cost_complexity = tune(),
+                          tree_depth = tune(),
+                          min_n = tune()) %>%
+  set_engine("rpart") %>%
+  set_mode("regression")
+
+tree_wflow <- workflow() %>%
+  add_recipe(rec3) %>%
+  add_model(tree_mod)
+```
+
+```{r}
+tree_grid_search <-
+  tune_grid(
+    tree_wflow,
+    resamples = train_cv5,
+    grid = tree_grid
+  )
+```
+
+```{r}
+tuning_metrics <- tree_grid_search %>% collect_metrics()
+tuning_metrics
+```
+
+```{r}
+tree_mod <- decision_tree(cost_complexity = 0.0000000001,
+                          tree_depth = 15,
+                          min_n = 40) %>%
+  set_engine("rpart") %>%
+  set_mode("regression")
+
+tree_rec1_5 <- tree_mod %>% 
+  fit_resamples(rec1,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+tree_rec1_1_5 <- tree_mod %>% 
+  fit_resamples(rec1_1,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+
+tree_rec2_5 <- tree_mod %>% 
+  fit_resamples(rec2,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+tree_rec2_1_5 <- tree_mod %>% 
+  fit_resamples(rec2_1,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+
+tree_rec3_5 <- tree_mod %>% 
+  fit_resamples(rec3,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+tree_rec3_1_5 <- tree_mod %>% 
+  fit_resamples(rec3_1,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+
+tree_rec4_5 <- tree_mod %>% 
+  fit_resamples(rec4,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+tree_rec4_1_5 <- tree_mod %>% 
+  fit_resamples(rec4_1,
+                resamples = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+```
+
+
+```{r}
+tr1 <- tree_rec1_5 %>% collect_metrics() %>% mutate(Model="Tree-1", .before=.metric)
+tr1_1 <- tree_rec1_1_5 %>% collect_metrics() %>% mutate(Model="Tree-1-1", .before=.metric)
+
+tr2 <- tree_rec2_5 %>% collect_metrics() %>% mutate(Model="Tree-2", .before=.metric)
+tr2_1 <- tree_rec2_1_5 %>% collect_metrics() %>% mutate(Model="Tree-2-1", .before=.metric)
+
+tr3 <- tree_rec3_5 %>% collect_metrics() %>% mutate(Model="Tree-3", .before=.metric)
+tr3_1 <- tree_rec3_1_5 %>% collect_metrics() %>% mutate(Model="Tree-3-1", .before=.metric)
+
+tr4 <- tree_rec4_5 %>% collect_metrics() %>% mutate(Model="Tree-4", .before=.metric)
+tr4_1 <- tree_rec4_1_5 %>% collect_metrics() %>% mutate(Model="Tree-4-1", .before=.metric)
+```
+
+```{r}
+tr_Comp <- rbind(tr1, tr1_1, tr2, tr2_1, tr3, tr3_1, tr4, tr4_1) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+
+tr_Comp
+```
+**Tree 3-1** seems to be performing the best
+
+```{r}
+tree_rec1_10 <- tree_mod %>% 
+  fit_resamples(rec1,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+tree_rec1_1_10 <- tree_mod %>% 
+  fit_resamples(rec1_1,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+
+tree_rec2_10 <- tree_mod %>% 
+  fit_resamples(rec2,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+tree_rec2_1_10 <- tree_mod %>% 
+  fit_resamples(rec2_1,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+
+tree_rec3_10 <- tree_mod %>% 
+  fit_resamples(rec3,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+tree_rec3_1_10 <- tree_mod %>% 
+  fit_resamples(rec3_1,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+
+tree_rec4_10 <- tree_mod %>% 
+  fit_resamples(rec4,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+
+tree_rec4_1_10 <- tree_mod %>% 
+  fit_resamples(rec4_1,
+                resamples = train_cv10,
+                control = control_resamples(save_pred = TRUE))
+```
+
+```{r}
+tr1_10 <- tree_rec1_10 %>% collect_metrics() %>% mutate(Model="Tree-1_10", .before=.metric)
+tr1_1_10 <- tree_rec1_1_10 %>% collect_metrics() %>% mutate(Model="Tree-1-1_10", .before=.metric)
+
+tr2_10 <- tree_rec2_10 %>% collect_metrics() %>% mutate(Model="Tree-2_10", .before=.metric)
+tr2_1_10 <- tree_rec2_1_10 %>% collect_metrics() %>% mutate(Model="Tree-2-1_10", .before=.metric)
+
+tr3_10 <- tree_rec3_10 %>% collect_metrics() %>% mutate(Model="Tree-3_10", .before=.metric)
+tr3_1_10 <- tree_rec3_1_10 %>% collect_metrics() %>% mutate(Model="Tree-3-1_10", .before=.metric)
+
+tr4_10 <- tree_rec4_10 %>% collect_metrics() %>% mutate(Model="Tree-4_10", .before=.metric)
+tr4_1_10 <- tree_rec4_1_10 %>% collect_metrics() %>% mutate(Model="Tree-4-1_10", .before=.metric)
+```
+
+```{r}
+tr_Comp_10 <- rbind(tr1_10, tr1_1_10, tr2_10, tr2_1_10, tr3_10, tr3_1_10, tr4_10, tr4_1_10) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+
+tr_Comp_10
+```
+
+Overall, Decision Tree is not performing as well as linear regression
+
+
+
+## Model that dont work
+### Random Forest
+```{r, error=TRUE}
+cores <- detectCores()
+
+rf_mod <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_engine("ranger", num.threads = cores) %>% 
+  set_mode("regression")
+
+rf_res <- rf_mod %>% 
+  tune_grid(rec4,
+            resamples = train_cv5,
+            grid = 10,
+            control = control_grid(save_pred = TRUE))
+  
+tuning_metrics2 <- rf_res %>% collect_metrics()
+
+tuning_metrics2 %>% 
+  filter(.metric == "rmse") %>% 
+  slice_min(mean)
+```
+```{r, error=TRUE}
+cores <- detectCores()
+rf_mod <- 
+  rand_forest(mtry = 15, min_n = 36, trees = 1000) %>% 
+  set_engine("ranger", num.threads = cores) %>% 
+  set_mode("regression")
+
+rf_rec1 <- rf_mod %>% 
+  fit_resamples(rec1, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+rf_rec1_1 <- rf_mod %>% 
+  fit_resamples(rec1_1, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+
+rf_rec2 <- rf_mod %>% 
+  fit_resamples(rec2, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+rf_rec2_1 <- rf_mod %>% 
+  fit_resamples(rec2_1, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+
+rf_rec3 <- rf_mod %>% 
+  fit_resamples(rec3, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+rf_rec3_1 <- rf_mod %>% 
+  fit_resamples(rec3_1, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+
+rf_rec4 <- rf_mod %>% 
+  fit_resamples(rec4, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+rf_rec4_1 <- rf_mod %>% 
+  fit_resamples(rec4_1, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+```
+
+```{r, error=TRUE}
+rf1 <- rf_rec1 %>% collect_metrics() %>% mutate(Model="RF-1", .before=.metric)
+rf1_1 <- rf_rec1_1 %>% collect_metrics() %>% mutate(Model="RF-1_1", .before=.metric)
+rf2 <- rf_rec2 %>% collect_metrics() %>% mutate(Model="RF-2", .before=.metric)
+rf2_1 <- rf_rec2_1 %>% collect_metrics() %>% mutate(Model="RF-2_1", .before=.metric)
+rf3 <- rf_rec3 %>% collect_metrics() %>% mutate(Model="RF-3", .before=.metric)
+rf3_1 <- rf_rec3_1 %>% collect_metrics() %>% mutate(Model="RF-3_1", .before=.metric)
+rf4 <- rf_rec4 %>% collect_metrics() %>% mutate(Model="RF-4", .before=.metric)
+rf4_1 <- rf_rec4_1 %>% collect_metrics() %>% mutate(Model="RF-4_1", .before=.metric)
+
+tree_Comp <- rbind(rf1, rf1_1) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+tree_Comp
+```
+
+Random Forest does not seem to work 
+
+
+
+### Bagging?
+```{r}
+library(baguette)
+bag_tree_spec <- bag_tree() %>%
+  set_engine("rpart", times = 25) %>%
+  set_mode("regression")
+
+bag_fit1 <- bag_tree_spec %>% 
+  fit_resamples(rec1, 
+                resample = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+bag_fit1_1 <- bag_tree_spec %>% 
+  fit_resamples(rec1_1, 
+                resample = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+bag_fit2 <- bag_tree_spec %>% 
+  fit_resamples(rec2, 
+                resample = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+bag_fit2_1 <- bag_tree_spec %>% 
+  fit_resamples(rec2_1, 
+                resample = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+bag_fit3 <- bag_tree_spec %>% 
+  fit_resamples(rec3, 
+                resample = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+bag_fit3_1 <- bag_tree_spec %>% 
+  fit_resamples(rec3_1, 
+                resample = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+
+bag_fit4 <- bag_tree_spec %>% 
+  fit_resamples(rec4, 
+                resample = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+bag_fit4_1 <- bag_tree_spec %>% 
+  fit_resamples(rec4_1, 
+                resample = train_cv5,
+                control = control_resamples(save_pred = TRUE))
+```
+```{r}
+bag1 <- bag_fit1 %>% collect_metrics() %>% mutate(Model="Bag-2", .before=.metric)
+bag1_1 <- bag_fit1_1 %>% collect_metrics() %>% mutate(Model="Bag-2-1", .before=.metric)
+
+bag2 <- bag_fit2 %>% collect_metrics() %>% mutate(Model="Bag-2", .before=.metric)
+bag2_1 <- bag_fit2_1 %>% collect_metrics() %>% mutate(Model="Bag-2-1", .before=.metric)
+
+bag3 <- bag_fit3 %>% collect_metrics() %>% mutate(Model="Bag-3", .before=.metric)
+bag3_1 <- bag_fit3_1 %>% collect_metrics() %>% mutate(Model="Bag-3-1", .before=.metric)
+
+bag4 <- bag_fit4 %>% collect_metrics() %>% mutate(Model="Bag-4", .before=.metric)
+bag4_1 <- bag_fit4_1 %>% collect_metrics() %>% mutate(Model="Bag-4-1", .before=.metric)
+```
+
+```{r}
+lr_Comp <- rbind(bag1, bag1_1, bag2, bag2_1, bag3, bag3_1, bag4, bag4_1) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+
+lr_Comp
+```
+Bagging is also not working 
+
+### Nueral Network
+```{r, error=TRUE}
+nn_mod <- mlp(
+  hidden_units = 12,
+  penalty = 1,
+  epochs = 100,
+  activation = "linear") %>%
+  set_engine("nnet") %>%
+  set_mode("regression")
+
+nn_rec1 <- nn_mod %>% 
+  fit_resamples(rec1, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+nn_rec1_1 <- nn_mod %>% 
+  fit_resamples(rec1_1, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+
+nn_rec2 <- nn_mod %>% 
+  fit_resamples(rec2, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+nn_rec2_1 <- nn_mod %>% 
+  fit_resamples(rec2_1, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+
+nn_rec3 <- nn_mod %>% 
+  fit_resamples(rec3, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+nn_rec3_1 <- nn_mod %>% 
+  fit_resamples(rec3_1, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+
+nn_rec4 <- nn_mod %>% 
+  fit_resamples(rec4, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+nn_rec4_1 <- nn_mod %>% 
+  fit_resamples(rec4_1, 
+                resamples = train_cv5, 
+                control = control_resamples(save_pred = TRUE)) 
+
+nn1 <- nn_rec1 %>% collect_metrics() %>% mutate(Model="NN-1", .before=.metric)
+nn1_1 <- nn_rec1_1 %>% collect_metrics() %>% mutate(Model="NN-1_1", .before=.metric)
+nn2 <- nn_rec2 %>% collect_metrics() %>% mutate(Model="NN-2", .before=.metric)
+nn2_1 <- nn_rec2_1 %>% collect_metrics() %>% mutate(Model="NN-2_1", .before=.metric)
+nn3 <- nn_rec3 %>% collect_metrics() %>% mutate(Model="NN-3", .before=.metric)
+nn3_1 <- nn_rec3_1 %>% collect_metrics() %>% mutate(Model="NN-3_1", .before=.metric)
+nn4 <- nn_rec4 %>% collect_metrics() %>% mutate(Model="NN-4", .before=.metric)
+nn4_1 <- nn_rec4_1 %>% collect_metrics() %>% mutate(Model="NN-4_1", .before=.metric)
+
+nn_Comp <- rbind(nn1, nn1_1, nn2, nn2_1, nn3, nn3_1, nn4, nn4_1) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+nn_Comp
+```
+
+# Model Comparisions 
+```{r}
+model_Comp <- rbind(lr4_1, lr4_1_10, tr3_1, tr4_1, tr4_1_10) %>% 
+  dplyr::select(Model, .metric, mean) %>% 
+  pivot_wider(names_from = .metric,
+              values_from = mean)
+
+model_Comp
+```
+# Final Model
+```{r}
+rec4_1 <- recipe(log_sale_price ~ log_lot_frontage+log_lot_area+street+neighborhood+bldg_type+house_style+overall_qual+overall_cond+year_built+Age+roof_style+heating+central_air+full_bath+half_bath+log_gr_liv_area+functional+screen_porch+pool_area+sale_type, data= train) 
+
+lr_mod <- linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+
+wflow <- workflow() %>%
+  add_model(lr_mod) %>%
+  add_recipe(rec4_1) 
+
+lr_final <- wflow %>% fit(train)
+```
+
+```{r}
+predictions <- predict(lr_final, new_data = test)
+SalePricePrediction <- exp(predictions)
+
+final_predictions <- data.frame(
+    PID  = test$pid,
+    SalePrice = SalePricePrediction
+)
+```
+```{r}
+final_predictions <- final_predictions %>% 
+  mutate(
+    SalePrice = .pred
+  ) 
+```
+
+
+```{r}
+final_predictions <- final_predictions[,-2]
+```
+
+```{r}
+final_predictions %>% write_csv("NickBias_QuantitativePredictions.csv")
+```
+
